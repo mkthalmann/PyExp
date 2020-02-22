@@ -6,3 +6,4 @@ movies_tk.py
 TEST_storage.txt
 TEST_results_full.csv
 TEST_results
+.pre_pandas
