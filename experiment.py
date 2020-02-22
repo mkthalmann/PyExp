@@ -25,12 +25,6 @@ from email.mime.text import MIMEText
 
 from config import *
 
-'''TO DO:
-        - add video support
-        - option to have several experimental blocks with a break in between
-        - randomize choices in dynamic FC
-'''
-
 
 class Window():
 
