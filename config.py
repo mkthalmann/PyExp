@@ -23,8 +23,10 @@ expo_text = '''Liebe/r Teilnehmer/In,\n\nim Folgenden werden wir Ihnen einige SÃ
 
 # warm up section
 warm_up = False
-warm_up_title = "This is a familiarization phase."  # leave as empty string to disable
-warm_up_description = "Please do as you're told so won't fuck up my experiment."  # leave as empty string to disable
+# leave as empty string to disable
+warm_up_title = "This is a familiarization phase."
+# leave as empty string to disable
+warm_up_description = "Please do as you're told so won't fuck up my experiment."
 # uses item_file_extension: .csv; .txt; .xlsx
 warm_up_file = "items/warm_up"  # warm_up_audio/warm_up
 
@@ -36,7 +38,8 @@ self_paced_reading = False
 cumulative = False
 title = ""  # leave as empty string to disable
 description = ""  # leave as empty string to disable
-likert = [1, 2, 3, 4, 5, 6, 7]  # can also be used as forced choice; mixing strings and integers is fine (though I can't think of why anybody would want this)
+# can also be used as forced choice; mixing strings and integers is fine (though I can't think of why anybody would want this)
+likert = [1, 2, 3, 4, 5, 6, 7]
 endpoints = ["(horrid)", "(splendid)"]  # empty strings to disable: ["", ""]
 
 # option to retrieve the judgment/fc options from the item file for each item separately; will overwrite whatever is specified in likert list above
@@ -66,7 +69,8 @@ remove_ratio = .75
 # item file
 # assumes file with suffix containing the number of the list: "complete_list1.xlsx")
 item_lists = 2  # with 4, you should have four lists: $list1, $list2, $list3, $list4
-item_file = "items/complete_dynamic"  # complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
+# complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
+item_file = "items/complete_dynamic"
 item_file_extension = ".xlsx"  # .csv; .txt; .xlsx
 items_randomize = True
 
@@ -75,7 +79,8 @@ results_file = "results"
 results_file_extension = ".csv"  # .csv; .txt; .xlsx
 
 # feedback section
-feedback = "Feedback test\nWhat would you like to tell me?"  # leave empty to not have a feedback section at the end of the exp
+# leave empty to not have a feedback section at the end of the exp
+feedback = "Feedback test\nWhat would you like to tell me?"
 
 # button text
 audio_button_text = "Play Item"
@@ -90,5 +95,5 @@ error_meta = "Fill out all fields, please!"
 
 # font setup
 font = "Roboto Condensed"
-font_mono = "Roboto Mono"  # only used in self-paced-reading
+font_mono = "Source Code Pro"  # only used in self-paced-reading
 basesize = 25
