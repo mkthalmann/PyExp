@@ -9,3 +9,4 @@ TEST_results
 .pre_pandas
 .vscode
 __pycache__
+.DS_Store
