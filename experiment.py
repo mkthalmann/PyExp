@@ -29,8 +29,7 @@ from config import *
 
 '''
     TODO:
-    - for the result file name, add .zfill(len(str(participants)))
-    - the settings in config should be exported to a file somehow; there should also be a warning if such a file exists and the settings do not match
+    -
 
     FIXME:
     - for __str__, use formatted strings with conditionals: f"I am {a if young else b} years old"
@@ -38,6 +37,10 @@ from config import *
 
 
 class Window():
+
+    # class attribute: core values
+    config_core = ["experiment_title", "warm_up",
+                   "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
 
     def __init__(self):
         pass
@@ -97,6 +100,7 @@ class Experiment(Window):
 
         # housekeeping file which tracks how many participants have been tested
         self.part_and_list_file = experiment_title + "_storage.txt"
+        self.config_file = experiment_title + "_results/config.txt"
 
         # store meta data
         self.meta_entries = []
@@ -225,6 +229,16 @@ class Experiment(Window):
         config_label = Label(frame_config, font=(font, basesize + 8),
                              text="You seem to have edited some of the configuration identifiers in config.py. \nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.", height=12, wraplength=1000)
         config_label.pack()
+        self.submit_btn(self.root.destroy)
+
+    def display_config_mismatch(self):
+        frame_config = Frame(self.root)
+        frame_config.pack(expand=False, fill="both",
+                          side="top", pady=10, padx=25)
+        config_label = Label(frame_config, font=(font, basesize + 8),
+                             text="The configurations for the currently running experiment have changed from previous participants.\nCheck 'config.txt' or start a new experiment to proceed.", height=12, wraplength=1000)
+        config_label.pack()
+        self.submit_btn(self.root.destroy)
 
     def display_meta_forms(self, fields=meta_fields, instruction=meta_instruction):
         # instructions for the meta fields
@@ -435,6 +449,9 @@ class Experiment(Window):
         if compare_config == list(self.config_dict.keys()):
             return True
         else:
+            # show the differences
+            print("\nThese entries are either missing from config.py or have been added to it:\n" + str(list(set(compare_config)
+                                                                                                             ^ set(list(self.config_dict.keys())))))
             return False
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
@@ -443,15 +460,29 @@ class Experiment(Window):
 
     # file to store how many participants have been tested
     def housekeeping_lists(self):
+        # generate folder if it does not exist already
+        if not os.path.isdir(experiment_title + "_results"):
+            os.makedirs(experiment_title + "_results")
+
         # if file does not exist, create it
         if not os.path.isfile(self.part_and_list_file):
             with open(self.part_and_list_file, 'a') as file:
                 file.write("0")
             self.participant_number = 0
+            # save self.config_dict in the results directory to validate on later runs that the same settings are being used
+            with open(self.config_file, "w") as file:
+                file.write(str(self.config_dict))
+
         # or: retrieve how many have been tested if the file already exists
         else:
             with open(self.part_and_list_file, 'r') as file:
                 self.participant_number = int(file.read())
+            # check if the saved config file is the same as the one in self.config_dict: dict_a == dict_b; otherwise throw a warning
+            with open(self.config_file, "r") as file:
+                compare_config = eval(file.read())
+            # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
+            if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
+                self.display_config_mismatch()
             if self.participant_number == participants:
                 self.init_experiment_finished()
 
@@ -468,13 +499,9 @@ class Experiment(Window):
             f"Starting with Participant Number {self.participant_number}/{participants} now! Participant was assigned to Item File {self.item_list_no}\n")
 
     def open_results_file(self):
-        # generate folder if it does not exist already
-        if not os.path.isdir(experiment_title + "_results"):
-            os.makedirs(experiment_title + "_results")
-
         # outfile in new folder with id number attached
         self.outfile = experiment_title + "_results/" + results_file + "_" + \
-            str(self.participant_number) + "_" + \
+            str(self.participant_number).zfill(len(str(self.config_dict["participants"]))) + "_" + \
             self.id_string + results_file_extension
 
         # for standard judgment experiments (either text or audio)
