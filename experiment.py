@@ -15,6 +15,7 @@ from PIL import Image, ImageTk
 from io import BytesIO  # linked files
 from urllib.request import urlopen  # linked files
 import time
+import datetime
 import pandas as pd
 # e-mail stuff
 import smtplib
@@ -29,7 +30,6 @@ from config import *
 '''
     TODO:
     - for the result file name, add .zfill(len(str(participants)))
-    - column containing the date the participant was tested: import datetime; today = datetime.date.today().strftime("%d/%m/%Y")
     - the settings in config should be exported to a file somehow; there should also be a warning if such a file exists and the settings do not match
 
     FIXME:
@@ -91,6 +91,7 @@ class Experiment(Window):
         # add close warning
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        self.today = datetime.date.today().strftime("%d/%m/%Y")
         # configuration dictionary
         self.config_dict = self.get_config_dict()
 
@@ -479,7 +480,7 @@ class Experiment(Window):
         # for standard judgment experiments (either text or audio)
         if (use_text_stimuli and not self_paced_reading) or not use_text_stimuli:
             # header row: id number, meta data and then item stuff
-            out_l = [["id"], meta_fields, ["sub_exp"], ["item"],
+            out_l = [["id"], ["date"], meta_fields, ["sub_exp"], ["item"],
                      ["cond"], ["judgment"], ["reaction_time"]]
         else:
             # header with a column for each word in the item (of the first item)
@@ -786,7 +787,7 @@ class Experiment(Window):
         self.submit.config(state="disabled")
 
         # compile all the info we need for the results file
-        out_l = [[self.id_string], self.meta_entries_final, list(
+        out_l = [[self.id_string], [self.today], self.meta_entries_final, list(
             self.items.iloc[self.item_counter, 1:4]), self.spr_reaction_times.values()]
         # flatten list of lists; turn to string, remove capital letters
         out_l = [str(item).casefold() for sublist in out_l for item in sublist]
@@ -830,7 +831,7 @@ class Experiment(Window):
                 reaction_time = time.time() - self.time_start - self.sound.get_length()
 
             # set up all the info that should be written to the file (in that order)
-            out_l = [[self.id_string], self.meta_entries_final, list(self.items.iloc[self.item_counter, 1:4]), [
+            out_l = [[self.id_string], [self.today], self.meta_entries_final, list(self.items.iloc[self.item_counter, 1:4]), [
                 self.judgment.get()], [str(round(reaction_time, 5))]]
 
             # flatten list of lists; turn to string, remove capital letters
