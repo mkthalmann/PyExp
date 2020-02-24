@@ -10,3 +10,4 @@ TEST_results
 .vscode
 __pycache__
 .DS_Store
+.convert.py
