@@ -25,6 +25,19 @@ from email.mime.text import MIMEText
 
 from config import *
 
+'''
+    TODO:
+    - for the result file name, add .zfill(len(str(participants)))
+    - column containing the date the participant was tested: import datetime; today = datetime.date.today().strftime("%d/%m/%Y")
+    - the settings in config should be exported to a file somehow; there should also be a warning if such a file exists and the settings do not match
+
+    FIXME:
+    - lacking a __repr__ and __str__ method; not super easy to fix since most of the defining attributes are stored in the config file; maybe I should add all of those values as members of a config dictionary, that can be printed out to see what kind of experiment is currently running; see convert.py
+    - with this implemented, you do not even need to import config anymore
+    - for __str__, use formatted strings with conditionals: f"I am {a if young else b} years old"
+    - add a check in the beginning to see if the names in the config_dict are the ones we want (to check that people did not change them)
+'''
+
 
 class Window():
 
