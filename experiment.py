@@ -3,6 +3,7 @@
 from tkinter import *
 from tkinter import messagebox
 from threading import Timer
+import json
 import random  # randomize items
 import string  # participant id
 import re  # regular expressions
@@ -32,10 +33,7 @@ from config import *
     - the settings in config should be exported to a file somehow; there should also be a warning if such a file exists and the settings do not match
 
     FIXME:
-    - lacking a __repr__ and __str__ method; not super easy to fix since most of the defining attributes are stored in the config file; maybe I should add all of those values as members of a config dictionary, that can be printed out to see what kind of experiment is currently running; see convert.py
-    - with this implemented, you do not even need to import config anymore
     - for __str__, use formatted strings with conditionals: f"I am {a if young else b} years old"
-    - add a check in the beginning to see if the names in the config_dict are the ones we want (to check that people did not change them)
 '''
 
 
@@ -93,6 +91,9 @@ class Experiment(Window):
         # add close warning
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        # configuration dictionary
+        self.config_dict = self.get_config_dict()
+
         # housekeeping file which tracks how many participants have been tested
         self.part_and_list_file = experiment_title + "_storage.txt"
 
@@ -124,16 +125,26 @@ class Experiment(Window):
         # phase checker dict; for critical phase, finished exp, and quit application
         self.phases = dict.fromkeys(["critical", "finished", "quit"], False)
 
+    # FIXME: this should print out a formatted string that kind of describes the experiment
+    def __str__(self):
+        return json.dumps(self.config_dict)
+
+    def __repr__(self):
+        return json.dumps(self.config_dict)
+
     ''' SECTION I: initializing methods for the various phases of the experiment '''
 
     def init_meta(self):
-        self.display_spacer_frame()
-        self.housekeeping_lists()
-        # only display the stuff below if more participants are needed
-        if self.participant_number != participants:
-            self.id_generator()
-            self.display_meta_forms()
-            self.submit_btn(self.save_meta)
+        if self.check_config():
+            self.display_spacer_frame()
+            self.housekeeping_lists()
+            # only display the stuff below if more participants are needed
+            if self.participant_number != participants:
+                self.id_generator()
+                self.display_meta_forms()
+                self.submit_btn(self.save_meta)
+        else:
+            self.display_config_problems()
 
     def init_exposition(self):
         self.display_spacer_frame()
@@ -205,6 +216,14 @@ class Experiment(Window):
             f"\nAll Participants have been tested. If you want to test more than {participants} people, increase the amount in the specs file!")
 
     ''' SECTION II: display methods used by the initializing functions '''
+
+    def display_config_problems(self):
+        frame_config = Frame(self.root)
+        frame_config.pack(expand=False, fill="both",
+                          side="top", pady=10, padx=25)
+        config_label = Label(frame_config, font=(font, basesize + 8),
+                             text="You seem to have edited some of the configuration identifiers in config.py. \nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.", height=12, wraplength=1000)
+        config_label.pack()
 
     def display_meta_forms(self, fields=meta_fields, instruction=meta_instruction):
         # instructions for the meta fields
@@ -391,6 +410,31 @@ class Experiment(Window):
         error_label.after(800, lambda: error_label.destroy())
 
     ''' SECTION III: file management methods '''
+
+    def get_config_dict(self):
+        with open("config.py", "r") as file:
+            config_list = file.read().splitlines()
+
+        # remove all comments
+        variable_list = [x.strip().split("#")[0]
+                         for x in config_list if not x.strip().split("#")[0] == ""]
+
+        # add all values to a list
+        config_dict = {}
+        for variable in variable_list:
+            key, value = variable.split(" = ")
+            config_dict[key] = eval(value)
+        return config_dict
+
+    def check_config(self):
+        compare_config = ['fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc',
+                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize']
+
+        # compare the two
+        if compare_config == list(self.config_dict.keys()):
+            return True
+        else:
+            return False
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
         self.id_string = ''.join(random.choice(chars) for _ in range(size))
