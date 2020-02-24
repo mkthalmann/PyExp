@@ -132,7 +132,8 @@ class Experiment(Window):
 
     # FIXME: this should print out a formatted string that kind of describes the experiment
     def __str__(self):
-        return json.dumps(self.config_dict)
+        core_dict = {k: self.config_dict[k] for k in self.config_core}
+        return json.dumps(core_dict)
 
     def __repr__(self):
         return json.dumps(self.config_dict)
@@ -149,7 +150,8 @@ class Experiment(Window):
                 self.display_meta_forms()
                 self.submit_btn(self.save_meta)
         else:
-            self.display_config_problems()
+            self.display_config_problem(
+                "You seem to have edited some of the configuration identifiers in config.py. \nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.")
 
     def init_exposition(self):
         self.display_spacer_frame()
@@ -222,22 +224,13 @@ class Experiment(Window):
 
     ''' SECTION II: display methods used by the initializing functions '''
 
-    def display_config_problems(self):
-        frame_config = Frame(self.root)
-        frame_config.pack(expand=False, fill="both",
-                          side="top", pady=10, padx=25)
-        config_label = Label(frame_config, font=(font, basesize + 8),
-                             text="You seem to have edited some of the configuration identifiers in config.py. \nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.", height=12, wraplength=1000)
-        config_label.pack()
-        self.submit_btn(self.root.destroy)
-
-    def display_config_mismatch(self):
-        frame_config = Frame(self.root)
-        frame_config.pack(expand=False, fill="both",
-                          side="top", pady=10, padx=25)
-        config_label = Label(frame_config, font=(font, basesize + 8),
-                             text="The configurations for the currently running experiment have changed from previous participants.\nCheck 'config.txt' or start a new experiment to proceed.", height=12, wraplength=1000)
-        config_label.pack()
+    def display_problem(self, problem):
+        frame_problem = Frame(self.root)
+        frame_problem.pack(expand=False, fill="both",
+                           side="top", pady=10, padx=25)
+        problem_label = Label(frame_problem, font=(font, basesize + 8),
+                              text=problem, height=12, wraplength=1000)
+        problem_label.pack()
         self.submit_btn(self.root.destroy)
 
     def display_meta_forms(self, fields=meta_fields, instruction=meta_instruction):
@@ -482,7 +475,8 @@ class Experiment(Window):
                 compare_config = eval(file.read())
             # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
             if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
-                self.display_config_mismatch()
+                self.display_config_problem(
+                    "The configurations for the currently running experiment have changed from previous participants.\nCheck 'config.txt' or start a new experiment to proceed.")
             if self.participant_number == participants:
                 self.init_experiment_finished()
 
