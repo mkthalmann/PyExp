@@ -5,7 +5,7 @@ This is one of my ongoing side projects: an experiment script with Python 3 usin
 * have a fairly straight-forward structure with which to carry out linguistic experiments
   * to achieve this, I made the choice to limit aesthetic flexibility in favor of a broad(-ish) coverage of important paradigms and minimal specification effort before the experiment is ready to go
 * include these paradigms (for now):
-  * linguistic judgments of text and audio stimuli &mdash; the latter of which can either be present locally or streamed from online sources
+  * linguistic judgments (Likert-style) of text and audio stimuli &mdash; the latter of which can either be present locally or streamed from online sources
   * recording of reaction times
   * forced choice (either dynamic or static) between images or text options
   * self-paced-reading (either cumulative or static)
@@ -17,7 +17,7 @@ To run the experiment, simply adjust the settings in `config.py` and add your it
 
 **ADD**:
 
-* item lists -> data structure
+* setup of the item lists; i.e., which columns should hold which value etc
 * an explanation of the various settings available in `config.py`
 
 ## Details
@@ -26,7 +26,7 @@ In order to display the experiment, tkinter is used (unfortunately, so far, I ha
 
 ## Desiderata
 
-Below is a list of features I would like to implement in the future. While it is no guarantee that this will actually happen, the following list is supposed to hold me a accountable.
+Below is a list of features I would like to implement in the future. While it is no guarantee that this will actually happen, the following list is supposed to hold me (somewhat) accountable.
 
 * support for video stimuli
 * randomize order of dynamic FC options
@@ -34,8 +34,8 @@ Below is a list of features I would like to implement in the future. While it is
 
 ## Feedback
 
-If you have any comments, feature requests or suggestions, please feel free to send me a mail: [Maik](mailto:maik.thalmann@gmail.com?subject=[GitHub]%20PyExp).
+If you have any comments, feature requests or suggestions, please feel free to send me an [e-mail](mailto:maik.thalmann@gmail.com?subject=[GitHub]%20PyExp).
 
 ## Acknowledgments
 
-Thank you to anybody whose code I used and likely butchered in my own interpretation!
+Thank you to anybody whose code I used and likely butchered in my own implementation!
