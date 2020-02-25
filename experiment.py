@@ -27,7 +27,9 @@ from email.mime.text import MIMEText
 
 '''
     TODO:
-    -
+    - support for video stimuli
+    - randomize order of dynamic FC options
+    - option to have several experimental blocks with a break in between
 
     FIXME:
     - 
@@ -103,7 +105,7 @@ class Experiment(Window):
         self.part_and_list_file = self.config_dict["experiment_title"] + \
             "_storage.txt"
         self.config_file = self.config_dict["experiment_title"] + \
-            "_results/config.txt"
+            "_results/config.json"
 
         # store meta data
         self.meta_entries = []
@@ -452,8 +454,8 @@ class Experiment(Window):
                 file.write("0")
             self.participant_number = 0
             # save self.config_dict in the results directory to validate on later runs that the same settings are being used
-            with open(self.config_file, "w") as file:
-                file.write(str(self.config_dict))
+            with open(self.config_file, "w", encoding='utf-8') as file:
+                json.dump(self.config_dict, file, ensure_ascii=False, indent=4)
 
         # or: retrieve how many have been tested if the file already exists
         else:
@@ -461,7 +463,7 @@ class Experiment(Window):
                 self.participant_number = int(file.read())
             # check if the saved config file is the same as the one in self.config_dict: dict_a == dict_b; otherwise throw a warning
             with open(self.config_file, "r") as file:
-                compare_config = eval(file.read())
+                compare_config = json.load(file)
             # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
             if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
                 self.display_long(
