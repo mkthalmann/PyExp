@@ -211,12 +211,7 @@ class Experiment(Window):
 
     # message showing up when all necessary participants have been tested
     def init_experiment_finished(self):
-        frame_finished = Frame(self.root)
-        frame_finished.pack(expand=False, fill="both",
-                            side="top", pady=10, padx=25)
-        finished_label = Label(frame_finished, font=(
-            self.config_dict["font"], self.config_dict["basesize"] + 8), text=self.config_dict["finished_message"], height=12, wraplength=1000)
-        finished_label.pack()
+        self.display_long(self.config_dict["finished_message"], 8)
 
         # send confirmation e-mail if so specified
         if self.config_dict["confirm_completion"]:
@@ -245,11 +240,8 @@ class Experiment(Window):
                           text=text, height=12, wraplength=1000)
             label.pack()
 
-    def display_meta_forms(self, instruction=None):
-        if instruction is None:
-            instruction = self.config_dict["meta_instruction"]
-        # instructions for the meta fields
-        self.display_short(instruction, -5)
+    def display_meta_forms(self):
+        self.display_short(self.config_dict["meta_instruction"], -5)
 
         # create frame and label for each of the entry fields
         for i in range(len(self.config_dict["meta_fields"])):
@@ -287,14 +279,13 @@ class Experiment(Window):
 
         self.items = df_items
 
-    def display_items(self, item=None):
-        item = item or self.items.iloc[0, self.item_counter]
+    def display_items(self):
         # frame to display the item plus the scenario
         frame_item = Frame(self.root)
         frame_item.pack(expand=False, fill="both",
                         side="top", pady=10, padx=25)
         self.item_text = Label(frame_item, font=(
-            self.config_dict["font"], self.config_dict["basesize"] + 8), text=item, height=7, wraplength=1000)
+            self.config_dict["font"], self.config_dict["basesize"] + 8), text=self.items.iloc[0, self.item_counter], height=7, wraplength=1000)
         self.item_text.pack()
 
     def display_audio_stimuli(self):
@@ -402,9 +393,9 @@ class Experiment(Window):
         spacer_line_btm = Frame(self.root, height=2, width=800, bg="gray90")
         spacer_line_btm.pack(side="top", anchor="c", pady=30)
 
-    def display_error(self):
+    def display_error(self, text):
         error_label = Label(self.root, font=(
-            self.config_dict["font"], self.config_dict["basesize"] - 8), text=self.config_dict["error_judgment"], fg="red")
+            self.config_dict["font"], self.config_dict["basesize"] - 8), text=text, fg="red")
         error_label.pack(side="top", pady=10)
         error_label.after(800, lambda: error_label.destroy())
 
@@ -418,11 +409,9 @@ class Experiment(Window):
         variable_list = [x.strip().split("#")[0]
                          for x in config_list if not x.strip().split("#")[0] == ""]
 
-        # add all values to a list
-        config_dict = {}
-        for variable in variable_list:
-            key, value = variable.split(" = ")
-            config_dict[key] = eval(value)
+        # add all values to a dictionary
+        config_dict = {key: eval(value)
+                       for (key, value) in [variable.split(" = ") for variable in variable_list]}
         return config_dict
 
     def check_config(self):
@@ -492,19 +481,19 @@ class Experiment(Window):
         # for standard judgment experiments (either text or audio)
         if (self.config_dict["use_text_stimuli"] and not self.config_dict["self_paced_reading"]) or not self.config_dict["use_text_stimuli"]:
             # header row: id number, meta data and then item stuff
-            out_l = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
-                     ["cond"], ["judgment"], ["reaction_time"]]
+            header_list = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
+                           ["cond"], ["judgment"], ["reaction_time"]]
         else:
             # header with a column for each word in the item (of the first item)
-            out_l = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
-                     ["cond"], self.items.iloc[0, 0].split()]
+            header_list = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
+                           ["cond"], self.items.iloc[0, 0].split()]
 
         # flatten the list of lists, remove capitalization and spaces
-        out_l = [item.casefold().replace(" ", "_")
-                 for sublist in out_l for item in sublist]
+        header_list = [item.casefold().replace(" ", "_")
+                       for sublist in header_list for item in sublist]
 
         # initialize pandas object
-        self.outdf = pd.DataFrame(columns=out_l)
+        self.outdf = pd.DataFrame(columns=header_list)
 
     def delete_unfinished_part(self):
         # if specified by user, do not save unfinished participant results (according to the given ratio)
@@ -636,14 +625,13 @@ class Experiment(Window):
 
     ''' SECTION IV: Buttons '''
 
-    # judgment radio buttons in frame
-    def likert_scale(self, endpoints=None):
-        if endpoints == None:
-            endpoints = self.config_dict["endpoints"]
+    def likert_scale(self):
+        endpoints = self.config_dict["endpoints"]
         # frame for the judgment buttons
         frame_judg = Frame(self.root, relief="sunken", bd=2)
         frame_judg.pack(side="top", pady=20)
 
+        # FIXME: this could all be shortened by defining a function within a function to display the buttons
         # non-dynamic likert or forced choice
         if not self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
             # endpoint 1
@@ -754,10 +742,7 @@ class Experiment(Window):
 
         # if any of the fields are empty, print out an error message
         if "" in self.meta_entries_final:
-            error_label = Label(self.root, font=(
-                self.config_dict["font"], self.config_dict["basesize"] - 8), text=self.config_dict["error_meta"], fg="red")
-            error_label.pack(side="top", pady=10)
-            error_label.after(800, lambda: error_label.destroy())
+            self.display_error(self.config_dict["error_meta"])
 
         # if all selections were made, move on to exposition
         else:
@@ -908,7 +893,7 @@ class Experiment(Window):
 
         # if no selection was made using the radio buttons, display error
         else:
-            self.display_error()
+            self.display_error(self.config_dict["error_judgment"])
 
     def save_feedback(self):
         # feedback file will be saved together with the results, but under a different name; all feedback texts together in a single file
@@ -919,12 +904,9 @@ class Experiment(Window):
             (time.time() - self.experiment_started)/60, 2)
 
         # save the feedback with id string and internal number as csv file
-        if self.feedback.get().replace(" ", "") == "":
-            out_l = [self.id_string, experiment_duration,
-                     self.participant_number, "NA"]
-        else:
-            out_l = [self.id_string, experiment_duration,
-                     self.participant_number, self.feedback.get()]
+        feedback = self.feedback.get() if self.feedback.get().replace(" ", "") == "" else "NA"
+        out_l = [self.id_string, experiment_duration,
+                 self.participant_number, feedback]
 
         # open the feedback file or create one if it doesn't exist
         if os.path.isfile(feedback_file):
