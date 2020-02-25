@@ -11,6 +11,9 @@ experiment_title = "TEST"
 # separate multiple addresses via commas in the same string
 confirm_completion = False
 receiver_email = "maik.thalmann@gmail.com"
+# experimenter who does the actual testing the participants (the the PI) -- for record keeping purposes
+# can be changed between participants
+tester = "Maik"
 
 logo = "media/logo.png"
 
