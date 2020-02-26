@@ -47,9 +47,10 @@ endpoints = ["(horrid)", "(splendid)"]  # empty strings to disable: ["", ""]
 
 # option to retrieve the judgment/fc options from the item file for each item separately; will overwrite whatever is specified in likert list above
 # does not work with self-paced reading, but with traditional text and audio stimuli
+# order will be randomized
 # column names will be displayed in the results file
 dynamic_fc = False
-# display image options instead of text; images will be rescaled automatically
+# display image options instead of text; images will be rescaled automatically; order will be randomized
 # remember to add the entire path to the file, including extension, but its possible to mix file types
 dynamic_img = False
 # for audio stimuli:
