@@ -3,9 +3,10 @@ test.ipynb
 af2.mp4
 movies.py
 movies_tk.py
-TEST_storage.txt
-TEST_results_full.csv
-TEST_results
+*_storage.txt
+*_participants.txt
+*_results_full.csv
+*_results
 .pre_pandas
 .vscode
 __pycache__
