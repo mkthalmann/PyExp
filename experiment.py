@@ -555,7 +555,9 @@ class Experiment(Window):
 
         print(f"\nMerged results file generated: {outfile}")
 
-    def read_multi_ext(self, file, extension):
+    def read_multi_ext(self, file, extension=None):
+        if extension == None:
+            _, extension = os.path.splitext(file)
         if extension == ".csv":
             df = pd.read_csv(file, sep=";")
         elif extension == ".xlsx":
@@ -564,7 +566,9 @@ class Experiment(Window):
             df = pd.read_table(file)
         return df
 
-    def save_multi_ext(self, df, file, extension):
+    def save_multi_ext(self, df, file, extension=None):
+        if extension == None:
+            _, extension = os.path.splitext(file)
         if extension == ".csv":
             df.to_csv(file, sep=';', index=False)
         elif extension == ".xlsx":
