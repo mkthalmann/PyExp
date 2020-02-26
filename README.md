@@ -2,7 +2,7 @@
 
 This is one of my ongoing side projects: an experiment script with Python 3 using tkinter. The scope of this effort is fairly limited for now:
 
-* have a fairly straight-forward structure with which to carry out linguistic experiments
+* have a fairly straight-forward structure with which to carry out linguistic experiments offline (in a lab setting with multiple computers, for example)
   * to achieve this, I made the choice to limit aesthetic flexibility in favor of a broad(-ish) coverage of important paradigms and minimal specification effort before the experiment is ready to go
 * include these paradigms (for now):
   * linguistic judgments (Likert-style) of text and audio stimuli &mdash; the latter of which can either be present locally or streamed from online sources
