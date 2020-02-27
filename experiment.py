@@ -1,29 +1,30 @@
 # pylint: disable=no-member,W0614
 
-from tkinter import *
-from tkinter import messagebox
-from threading import Timer
-import json
-import random  # randomize items, and FC options
-import string  # participant id
-import re  # regular expressions
-import os
-import glob
-import shutil
-import pygame  # audio
-from PIL import Image, ImageTk
-from io import BytesIO  # linked files
-from urllib.request import urlopen  # linked files
-import time
 import datetime
-import pandas as pd
-# e-mail stuff
+import glob
+import json
+import os
+import random  # randomize items, and FC options
+import re  # regular expressions
+import shutil
 import smtplib
 import ssl
+import string  # participant id
+import time
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from io import BytesIO  # linked files
+from threading import Timer
+from tkinter import *
+from tkinter import messagebox
+from urllib.request import urlopen  # linked files
+
+import pandas as pd
+import pygame  # audio
+from PIL import Image, ImageTk
+
 
 '''
     TODO:
@@ -155,8 +156,8 @@ class Experiment(Window):
             # only display the stuff below if more participants are needed and if the housekeeping check was fine
             if self.participant_number != self.config_dict["participants"] and not self.phases["problem"]:
                 self.id_generator()
-                self.display_meta_forms()
-                self.submit_btn(self.save_meta)
+                self.display_meta_information_forms()
+                self.submit_button(self.save_participant_information)
         else:
             self.display_long(
                 f"You seem to have edited some of the configuration identifiers in {self.config}.\nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.")
@@ -165,25 +166,25 @@ class Experiment(Window):
         """Initialize the expository section of the experiment. Inform participant about the experimental task and procedure."""
         self.display_spacer_frame()
         self.display_long(self.config_dict["expo_text"], 8)
-        self.submit_btn(self.save_expo)
+        self.submit_button(self.save_expo)
 
     def init_warm_up(self):
         """Initialize the warm-up section of the experiment. Only if specified by the user."""
-        self.items_retrieve_shuffle(
+        self.retrieve_items(
             self.config_dict["warm_up_file"], self.config_dict["warm_up"])
-        self.open_results_file()
+        self.prepare_results_df()
         print("Starting Warm-Up phase.\n")
         self.display_spacer_frame()
         self.display_short(self.config_dict["warm_up_title"], 5)
         self.display_short(self.config_dict["warm_up_description"])
         if not self.config_dict["self_paced_reading"]:
             if self.config_dict["use_text_stimuli"]:
-                self.display_items()
+                self.display_text_item()
             elif not self.config_dict["use_text_stimuli"]:
                 pygame.init()
-                self.display_audio_stimuli()
-            self.likert_scale()
-            self.submit_btn(self.save_judgment_next_item)
+                self.display_audio_stimulus()
+            self.judgment_buttons()
+            self.submit_button(self.save_judgment_next_item)
             self.submit.config(state="disabled")
         elif self.config_dict["use_text_stimuli"] and self.config_dict["self_paced_reading"]:
             self.display_masked_item()
@@ -194,9 +195,9 @@ class Experiment(Window):
         """Initialize the critical section of the experiment."""
         self.phases["critical"] = True
         self.housekeeping_update()
-        self.items_retrieve_shuffle()
+        self.retrieve_items()
         if not self.config_dict["warm_up"]:
-            self.open_results_file()
+            self.prepare_results_df()
         self.display_spacer_frame()
         self.display_short(self.config_dict["title"], 5)
         self.display_short(self.config_dict["description"])
@@ -206,14 +207,14 @@ class Experiment(Window):
             if self.config_dict["self_paced_reading"]:
                 self.display_masked_item()
             else:
-                self.display_items()
-                self.likert_scale()
-                self.submit_btn(self.save_judgment_next_item)
+                self.display_text_item()
+                self.judgment_buttons()
+                self.submit_button(self.save_judgment_next_item)
         else:
             pygame.init()
-            self.display_audio_stimuli()
-            self.likert_scale()
-            self.submit_btn(self.save_judgment_next_item)
+            self.display_audio_stimulus()
+            self.judgment_buttons()
+            self.submit_button(self.save_judgment_next_item)
         self.time_start = time.time()
 
     def init_experiment_finished(self):
@@ -222,9 +223,9 @@ class Experiment(Window):
 
         # send confirmation e-mail if so specified
         if self.config_dict["confirm_completion"]:
-            self.send_confirmation()
+            self.send_confirmation_email()
 
-        self.submit_btn(self.root.destroy)
+        self.submit_button(self.root.destroy)
         print(
             f"\nAll Participants have been tested. If you want to test more than {self.config_dict['participants']} people, increase the amount in the specs file!")
 
@@ -249,7 +250,7 @@ class Experiment(Window):
                           text=text, height=12, wraplength=1000)
             label.pack()
 
-    def display_meta_forms(self):
+    def display_meta_information_forms(self):
         """Display the instructions and the meta labels as well as the entry fields for all user-specified meta information that is to be collected."""
         self.display_short(self.config_dict["meta_instruction"], -5)
 
@@ -266,7 +267,7 @@ class Experiment(Window):
             lab.pack(side="left")
             self.meta_entries[i].pack(side="right", expand=True, fill="x")
 
-    def items_retrieve_shuffle(self, filename=None, warm_up_list=None):
+    def retrieve_items(self, filename=None, warm_up_list=None):
         """Retrieve the items from the specified item file and randomize their order if specified. Items are stored in items object."""
         if filename is None:
             filename = self.config_dict["item_file"]
@@ -289,7 +290,7 @@ class Experiment(Window):
 
         self.items = df_items
 
-    def display_items(self):
+    def display_text_item(self):
         """Display frame, label, and submit button for text items."""
         frame_item = Frame(self.root)
         frame_item.pack(expand=False, fill="both",
@@ -298,7 +299,7 @@ class Experiment(Window):
             self.config_dict["font"], self.config_dict["basesize"] + 7), text=self.items.iloc[0, self.item_counter], height=6, wraplength=1000)
         self.item_text.pack()
 
-    def display_audio_stimuli(self):
+    def display_audio_stimulus(self):
         """Display frame, label, and play button for audio items."""
         frame_audio = Frame(self.root, height=10)
         frame_audio.pack(expand=False, fill="both",
@@ -316,7 +317,7 @@ class Experiment(Window):
         self.item_text = Label(frame_item, font=(
             self.config_dict["font_mono"], self.config_dict["basesize"] + 8), text=self.create_masked_item(), height=9, wraplength=1000)
         self.item_text.pack()
-        self.submit_btn(self.next_spr_item)
+        self.submit_button(self.next_spr_item)
 
         # press the space bar to show next word
         self.root.bind('<space>', self.next_word)
@@ -370,7 +371,7 @@ class Experiment(Window):
                                fill="x", ipady=5, padx=50)
 
             # button to submit the feedback
-            self.submit_btn(self.save_feedback)
+            self.submit_button(self.save_feedback)
         # otherwise, just end the exp
         else:
             self.display_over()
@@ -488,7 +489,7 @@ class Experiment(Window):
         print(
             f"Starting with Participant Number {self.participant_number}/{self.config_dict['participants']} now! Participant was assigned to Item File {self.item_list_no}\n")
 
-    def open_results_file(self):
+    def prepare_results_df(self):
         """Initialize the results df with appropriate header depending on the experiment. Set the df as outdf."""
         # outfile in new folder with id number attached
         self.outfile = self.config_dict["experiment_title"] + "_results/" + self.config_dict["results_file"] + "_" + \
@@ -510,9 +511,8 @@ class Experiment(Window):
                        for sublist in header_list for item in sublist]
         self.outdf = pd.DataFrame(columns=header_list)
 
-    def resize_image(self, x):
+    def resize_image(self, x, desired_width=250):
         """Resize and return images for dynamic forced choice tasks."""
-        desired_width = 250
         image = Image.open(x)
         # compute rescaled dimensions
         new_dimensions = (int(image.width / (image.width / desired_width)),
@@ -520,7 +520,7 @@ class Experiment(Window):
         image = image.resize(new_dimensions, Image.ANTIALIAS)
         return ImageTk.PhotoImage(image)
 
-    def delete_unfinished_part(self):
+    def delete_unfinished_participant(self):
         """Depending on user settings, delete or keep data from experiment runs that were ended before the intended stopping point."""
         # if specified by user, do not save unfinished participant results (according to the given ratio)
         if self.config_dict["remove_unfinished"] and self.item_counter < len(self.items) * self.config_dict["remove_ratio"]:
@@ -624,7 +624,7 @@ class Experiment(Window):
         elif extension == ".txt":
             df.to_table(file, index=False)
 
-    def send_confirmation(self):
+    def send_confirmation_email(self):
         """Send confirmation e-mail to specified recipient with merged results file attached."""
         subject = f"{self.config_dict['experiment_title']}: Experiment Finished"
         body = f"Dear User,\n\nThis is to let you know that your experiment {self.config_dict['experiment_title']} has finished and all {self.config_dict['participants']} participants have been tested. We have attached the results file ({self.config_dict['experiment_title'] + '_results_full.csv'}) below.\n\nRegards,\nPyExpTK\n\n"
@@ -678,7 +678,7 @@ class Experiment(Window):
 
     ''' SECTION IV: Buttons '''
 
-    def likert_scale(self):
+    def judgment_buttons(self):
         """Display the likert, FC buttons or images used to give linguistic judgments."""
         endpoints = self.config_dict["endpoints"]
         # frame for the judgment buttons
@@ -686,7 +686,7 @@ class Experiment(Window):
         frame_judg.pack(side="top", pady=20)
 
         # function for all the various buttons
-        def likert_btn(value, text=None, image=None, side=None):
+        def text_or_image_button(value, text=None, image=None, side=None):
             if side == None:
                 side = "left"
             x = Radiobutton(frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
@@ -704,7 +704,7 @@ class Experiment(Window):
 
             # likert scale
             for x in self.config_dict['likert']:
-                likert_btn(text=str(x), value=str(
+                text_or_image_button(text=str(x), value=str(
                     x).casefold().replace(" ", "_"))
 
             # endpoint 2
@@ -716,7 +716,7 @@ class Experiment(Window):
         # get the Forced Choice options from the item file
         elif self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
             for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
-                likert_btn(text=str(x), value=str(
+                text_or_image_button(text=str(x), value=str(
                     name).casefold().replace(" ", "_"), side=random.sample(["left", "right"], 1))
 
         # display images instead of text as answer options
@@ -726,7 +726,7 @@ class Experiment(Window):
             for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
                 # store images in dict (otherwise they won't be displayed)
                 self.fc_images[x] = self.resize_image(x)
-                likert_btn(value=str(name).casefold().replace(
+                text_or_image_button(value=str(name).casefold().replace(
                     " ", "_"), image=self.fc_images[x], side=random.choice(["left", "right"]))
 
         if self.config_dict["use_text_stimuli"] and not self.config_dict["self_paced_reading"]:
@@ -735,7 +735,7 @@ class Experiment(Window):
                 self.config_dict["delay_judgment"], self.enable_submit)
             read_item_timer.start()
 
-    def submit_btn(self, continue_func):
+    def submit_button(self, continue_func):
         """Display a submit button that takes different continuation functions."""
         self.display_line()
 
@@ -778,7 +778,7 @@ class Experiment(Window):
         played_sound_timer = Timer(self.sound.get_length(), self.enable_submit)
         played_sound_timer.start()
 
-    def save_meta(self):
+    def save_participant_information(self):
         """Save all the meta fields to a list if all are filled out or display an error. On success, move on to exposition."""
         # empty the list (necessary for when the button is pressed multiple times)
         self.meta_entries_final.clear()
@@ -801,7 +801,7 @@ class Experiment(Window):
         ) if self.config_dict["warm_up"] else self.init_critical()
 
     def next_word(self, bla):
-        """Increase the word counter and update the label text in self-paced-reading experiments."""
+        """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary."""
         # no need to record the reaction time for first button press. that's before anything is shown
         if self.word_index == 0:
             # go to next word
@@ -993,7 +993,7 @@ class Experiment(Window):
             if self.phases["critical"] and not self.phases["finished"]:
                 print("\nIMPORTANT!: Experiment was quit manually.")
                 # either save the results or don't (depending on specification)
-                self.delete_unfinished_part()
+                self.delete_unfinished_participant()
             else:
                 print(
                     "\nExperiment was quit manually. This happened before the critical section, so there is no action required.")
