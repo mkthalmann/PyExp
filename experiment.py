@@ -556,6 +556,7 @@ class Experiment(Window):
         print(f"\nMerged results file generated: {outfile}")
 
     def read_multi_ext(self, file, extension=None):
+        """Read csv, xlsx, and txt files and returns a pandas DataFrame."""
         if extension == None:
             _, extension = os.path.splitext(file)
         if extension == ".csv":
@@ -567,6 +568,7 @@ class Experiment(Window):
         return df
 
     def save_multi_ext(self, df, file, extension=None):
+        """Save a pandas DataFrame, depending on extension used in outname or given explicitly."""
         if extension == None:
             _, extension = os.path.splitext(file)
         if extension == ".csv":
