@@ -129,9 +129,9 @@ class Experiment(Window):
         self.spr_reaction_times = {}  # for self-paced reading
 
         # images
-        self.logo = PhotoImage(file=self.config_dict["logo"]).subsample(6, 6)
-        self.playimage = PhotoImage(
-            file="media/play.png").subsample(6, 6) if not self.config_dict["use_text_stimuli"] else None
+        self.logo = self.resize_image(self.config_dict["logo"], 100)
+        self.playimage = self.resize_image(
+            "media/play.png", 100) if not self.config_dict["use_text_stimuli"] else None
         self.fc_images = {}  # for dynamic FC with images
         # feedback text
         self.feedback = StringVar()
