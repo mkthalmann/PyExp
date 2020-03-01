@@ -29,7 +29,6 @@ In order to display the experiment, tkinter is used (unfortunately, so far, I ha
 Below is a list of features I would like to implement in the future. While it is no guarantee that this will actually happen, the following list is supposed to hold me (somewhat) accountable.
 
 * support for video stimuli
-* randomize order of dynamic FC options
 * option to have several experimental blocks with a break in between
 
 ## Feedback
