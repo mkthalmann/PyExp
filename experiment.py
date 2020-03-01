@@ -34,7 +34,7 @@ from PIL import Image, ImageTk
     - for dynamic FC images, add REJECT option
 
     FIXME:
-    - Reduce branching by separating the various kinds of experiments into different methods (e.g. init_critical_spr; init_critical_text, init_critical_audio)
+    - 
 '''
 
 
@@ -88,7 +88,11 @@ class Experiment(Window):
                    "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
 
     def __init__(self, config):
-        # configuration dictionary
+        """Initialie the experiment class and start up the tkinter GUI.
+
+        Arguments:
+            config {str} -- Python script name that contains the experiment's configuration parameters.
+        """
         self.config = config
         self.config_dict = self.get_config_dict(self.config)
 
@@ -197,6 +201,7 @@ class Experiment(Window):
         self.init_items()
 
     def init_items(self):
+        """Display the various kinds of elements needed for the different types of experiments (text, play and submit buttons, likert scale, ...)."""
         if not self.config_dict["self_paced_reading"]:
             if self.config_dict["use_text_stimuli"]:
                 self.display_text_item()
@@ -241,7 +246,7 @@ class Experiment(Window):
             frame.pack(expand=False, fill="both",
                        side="top", pady=10, padx=25)
             label = Label(frame, font=(self.config_dict["font"], self.config_dict["basesize"] + size_mod),
-                          text=text, height=12, wraplength=1000)
+                          text=text, height=10, wraplength=1000)
             label.pack()
 
     def display_meta_information_forms(self):
@@ -666,9 +671,17 @@ class Experiment(Window):
 
     ''' SECTION IV: Buttons '''
 
-    def text_or_image_button(self, value, text=None, image=None, side=None):
-        if side == None:
-            side = "left"
+    def text_or_image_button(self, value, text=None, image=None, side="left"):
+        """Display a button in the judgment frame, either with text or images.
+
+        Arguments:
+            value {str} -- Value for the judgment when that button is clicked
+
+        Keyword Arguments:
+            text {str} -- Text next to the button (default: {None})
+            image {tkinter image} -- Image next to the button (default: {None})
+            side {str} -- Where to pack the button (default: {"left"})
+        """
         x = Radiobutton(self.frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
             self.config_dict["font"], self.config_dict["basesize"]))
         self.likert_list.append(x)
@@ -695,6 +708,7 @@ class Experiment(Window):
             read_item_timer.start()
 
     def likert_style_buttons(self):
+        """Display likert style radio buttons, optionally with endpoints. Also used for (static) Forced Choice."""
         # endpoint 1
         if self.config_dict["endpoints"][0] != "":
             scale_left = Label(self.frame_judg, text=self.config_dict["endpoints"][0], font=(
@@ -713,6 +727,7 @@ class Experiment(Window):
             scale_right.pack(side="left", expand=True, padx=10, pady=5)
 
     def dynamic_fc_buttons(self):
+        """Display either image or text buttons that take their arguments from the item file (dynamic FC)."""
         if not self.config_dict["dynamic_img"]:
             for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
                 self.text_or_image_button(text=str(x), value=str(
@@ -840,6 +855,7 @@ class Experiment(Window):
             self.next_item_general()
 
     def next_item_general(self):
+        """General waypoint function that performs all necessary tasks to display a new item (if there are more to be shown)."""
         # reset buttons for next item and increase item counter
         self.judgment.set("")
         self.item_counter += 1
@@ -858,6 +874,7 @@ class Experiment(Window):
             self.item_list_over()
 
     def item_list_over(self):
+        """Either launch the feedback or critical section of the experiment (because all items were seen)."""
         self.empty_window()
         if self.phases["critical"]:
             self.display_feedback()
@@ -866,6 +883,7 @@ class Experiment(Window):
             self.init_critical()
 
     def item_list_over_spr(self):
+        """Either launch the feedback or critical section of the experiment (because all items were seen). For self-paced-reading"""
         self.empty_window()
         if self.phases["critical"]:
             # remove the binding from the space bar
@@ -913,6 +931,7 @@ class Experiment(Window):
             self.item_list_over_spr()
 
     def next_text_item(self):
+        """Update the item text on the screen to show the new item and handle reaction times and button resets."""
         # disable the likert scale button
         for obj in self.likert_list:
             obj.config(state="disabled")
@@ -925,6 +944,7 @@ class Experiment(Window):
             text=self.items.iloc[self.item_counter, 0])
 
     def next_audio_item(self):
+        """Disable the judgment and submit buttons and flash the play button."""
         # because the play button will automatically update itself to play the new item (bc of the item_counter), we only need to disable the button for audio stimuli
         self.submit.config(state="disabled")
         for obj in self.likert_list:
@@ -1000,7 +1020,6 @@ class Experiment(Window):
             self.phases["quit"] = True
             if self.phases["critical"] and not self.phases["finished"]:
                 print("\nIMPORTANT!: Experiment was quit manually.")
-                # either save the results or don't (depending on specification)
                 self.delete_unfinished_participant()
                 self.save_feedback()
             else:
@@ -1010,5 +1029,6 @@ class Experiment(Window):
 
 if __name__ == '__main__':
     Exp = Experiment("test.py")
+    # print(Exp)
     Exp.init_meta()
     Exp.root.mainloop()
