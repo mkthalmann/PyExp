@@ -152,7 +152,7 @@ class Experiment(Window):
         """Initialize the meta-data collection section of the experiment."""
         if self.check_config():
             self.display_spacer_frame()
-            self.housekeeping_lists()
+            self.housekeeping()
             # only display the stuff below if more participants are needed and if the housekeeping check was fine
             if self.participant_number != self.config_dict["participants"] and not self.phases["problem"]:
                 self.id_generator()
@@ -194,7 +194,7 @@ class Experiment(Window):
     def init_critical(self):
         """Initialize the critical section of the experiment."""
         self.phases["critical"] = True
-        self.housekeeping_update()
+        self.housekeeping_file_update()
         self.retrieve_items()
         if not self.config_dict["warm_up"]:
             self.prepare_results_df()
@@ -446,7 +446,7 @@ class Experiment(Window):
         self.id_string = ''.join(random.choice(chars) for _ in range(size))
         print(f"\nNew Participant ID generated: {self.id_string}\n")
 
-    def housekeeping_lists(self):
+    def housekeeping(self):
         """Store and retrieve participant number from file as well as the configuration settings as a json file. Also checks that configuration has not changed between different runs of the same experiment."""
         # generate folder if it does not exist already
         if not os.path.isdir(self.config_dict["experiment_title"] + "_results"):
@@ -457,7 +457,7 @@ class Experiment(Window):
             self.create_housekeeping_files()
 
         else:
-            self.read_housekeeping_files()
+            self.read_and_check_housekeeping_files()
 
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
@@ -470,7 +470,7 @@ class Experiment(Window):
         with open(self.config_file, "w", encoding='utf-8') as file:
             json.dump(self.config_dict, file, ensure_ascii=False, indent=4)
 
-    def read_housekeeping_files(self):
+    def read_and_check_housekeeping_files(self):
         with open(self.part_and_list_file, 'r') as file:
             self.participant_number = int(file.read())
         # check if the saved config file is the same as the one in self.config_dict: dict_a == dict_b; otherwise throw a warning
@@ -484,7 +484,7 @@ class Experiment(Window):
         if self.participant_number == self.config_dict["participants"]:
             self.init_experiment_finished()
 
-    def housekeeping_update(self):
+    def housekeeping_file_update(self):
         """Increase the participant number and write it to the participants housekeeping file."""
         # increase participant number and write it to the housekeeping file
         self.participant_number += 1
@@ -969,7 +969,7 @@ class Experiment(Window):
             (time.time() - self.experiment_started)/60, 2)
 
         # save the feedback with id string and internal number as csv file
-        feedback = self.feedback.get() if self.feedback.get().replace(" ", "") == "" else "NA"
+        feedback = self.feedback.get() if self.feedback.get().replace(" ", "") != "" else "NA"
         out_l = [self.id_string, experiment_duration,
                  self.participant_number, feedback]
 
