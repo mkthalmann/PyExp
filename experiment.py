@@ -34,7 +34,7 @@ from PIL import Image, ImageTk
     - for dynamic FC images, add REJECT option
 
     FIXME:
-    - 
+    - Reduce branching by separating the various kinds of experiments into different methods (e.g. init_critical_spr; init_critical_text, init_critical_audio)
 '''
 
 
@@ -184,7 +184,7 @@ class Experiment(Window):
                 pygame.init()
                 self.display_audio_stimulus()
             self.judgment_buttons()
-            self.submit_button(self.save_judgment_next_item)
+            self.submit_button(self.submit_judgment)
             self.submit.config(state="disabled")
         elif self.config_dict["use_text_stimuli"] and self.config_dict["self_paced_reading"]:
             self.display_masked_item()
@@ -209,12 +209,12 @@ class Experiment(Window):
             else:
                 self.display_text_item()
                 self.judgment_buttons()
-                self.submit_button(self.save_judgment_next_item)
+                self.submit_button(self.submit_judgment)
         else:
             pygame.init()
             self.display_audio_stimulus()
             self.judgment_buttons()
-            self.submit_button(self.save_judgment_next_item)
+            self.submit_button(self.submit_judgment)
         self.time_start = time.time()
 
     def init_experiment_finished(self):
@@ -452,32 +452,37 @@ class Experiment(Window):
         if not os.path.isdir(self.config_dict["experiment_title"] + "_results"):
             os.makedirs(self.config_dict["experiment_title"] + "_results")
 
-        # if participant file does not exist, create it
+        # if participant and saved config file do not exist, create them
         if not os.path.isfile(self.part_and_list_file):
-            with open(self.part_and_list_file, 'a') as file:
-                file.write("0")
-            self.participant_number = 0
-            # save self.config_dict in the results directory to validate on later runs that the same settings are being used
-            with open(self.config_file, "w", encoding='utf-8') as file:
-                json.dump(self.config_dict, file, ensure_ascii=False, indent=4)
+            self.create_housekeeping_files()
 
-        # or: retrieve how many have been tested if the file already exists
         else:
-            with open(self.part_and_list_file, 'r') as file:
-                self.participant_number = int(file.read())
-            # check if the saved config file is the same as the one in self.config_dict: dict_a == dict_b; otherwise throw a warning
-            with open(self.config_file, "r") as file:
-                compare_config = json.load(file)
-            # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
-            if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
-                self.display_long(
-                    f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment to proceed.")
-                self.phases["problem"] = True
-            if self.participant_number == self.config_dict["participants"]:
-                self.init_experiment_finished()
+            self.read_housekeeping_files()
 
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
+
+    def create_housekeeping_files(self):
+        with open(self.part_and_list_file, 'a') as file:
+            file.write("0")
+        self.participant_number = 0
+        # save self.config_dict in the results directory to validate on later runs that the same settings are being used
+        with open(self.config_file, "w", encoding='utf-8') as file:
+            json.dump(self.config_dict, file, ensure_ascii=False, indent=4)
+
+    def read_housekeeping_files(self):
+        with open(self.part_and_list_file, 'r') as file:
+            self.participant_number = int(file.read())
+        # check if the saved config file is the same as the one in self.config_dict: dict_a == dict_b; otherwise throw a warning
+        with open(self.config_file, "r") as file:
+            compare_config = json.load(file)
+        # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
+        if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
+            self.display_long(
+                f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment to proceed.")
+            self.phases["problem"] = True
+        if self.participant_number == self.config_dict["participants"]:
+            self.init_experiment_finished()
 
     def housekeeping_update(self):
         """Increase the participant number and write it to the participants housekeeping file."""
@@ -677,61 +682,66 @@ class Experiment(Window):
 
     ''' SECTION IV: Buttons '''
 
+    def text_or_image_button(self, value, text=None, image=None, side=None):
+        if side == None:
+            side = "left"
+        x = Radiobutton(self.frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
+            self.config_dict["font"], self.config_dict["basesize"]))
+        self.likert_list.append(x)
+        x.pack(side=side, expand=True, padx=10)
+        x.config(state="disabled")
+
     def judgment_buttons(self):
         """Display the likert, FC buttons or images used to give linguistic judgments."""
         # frame for the judgment buttons
-        frame_judg = Frame(self.root, relief="sunken", bd=2)
-        frame_judg.pack(side="top", pady=20)
-
-        # function for all the various buttons
-        def text_or_image_button(value, text=None, image=None, side=None):
-            if side == None:
-                side = "left"
-            x = Radiobutton(frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
-                self.config_dict["font"], self.config_dict["basesize"]))
-            self.likert_list.append(x)
-            x.pack(side=side, expand=True, padx=10)
-            x.config(state="disabled")
+        self.frame_judg = Frame(self.root, relief="sunken", bd=2)
+        self.frame_judg.pack(side="top", pady=20)
 
         if not self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
-            # endpoint 1
-            if self.config_dict["endpoints"][0] != "":
-                scale_left = Label(frame_judg, text=self.config_dict["endpoints"][0], font=(
-                    self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
-                scale_left.pack(side="left", expand=True, padx=10, pady=5)
-
-            # likert scale
-            for x in self.config_dict['likert']:
-                text_or_image_button(text=str(x), value=str(
-                    x).casefold().replace(" ", "_"))
-
-            # endpoint 2
-            if self.config_dict["endpoints"][1] != "":
-                scale_right = Label(frame_judg, text=self.config_dict["endpoints"][1], font=(
-                    self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
-                scale_right.pack(side="left", expand=True, padx=10, pady=5)
+            self.likert_style_buttons()
 
         # get the Forced Choice options from the item file
-        elif self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
-            for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
-                text_or_image_button(text=str(x), value=str(
-                    name).casefold().replace(" ", "_"), side=random.sample(["left", "right"], 1))
-
-        # display images instead of text as answer options
-        elif self.config_dict["dynamic_img"]:
-            # reset images dict
-            self.fc_images = {}
-            for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
-                # store images in dict (otherwise they won't be displayed)
-                self.fc_images[x] = self.resize_image(x)
-                text_or_image_button(value=str(name).casefold().replace(
-                    " ", "_"), image=self.fc_images[x], side=random.choice(["left", "right"]))
+        else:
+            self.dynamic_fc_buttons()
 
         if self.config_dict["use_text_stimuli"] and not self.config_dict["self_paced_reading"]:
             # enable likert choice after specified delay is over
             read_item_timer = Timer(
                 self.config_dict["delay_judgment"], self.enable_submit)
             read_item_timer.start()
+
+    def likert_style_buttons(self):
+        # endpoint 1
+        if self.config_dict["endpoints"][0] != "":
+            scale_left = Label(self.frame_judg, text=self.config_dict["endpoints"][0], font=(
+                self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
+            scale_left.pack(side="left", expand=True, padx=10, pady=5)
+
+        # likert scale
+        for x in self.config_dict['likert']:
+            self.text_or_image_button(text=str(x), value=str(
+                x).casefold().replace(" ", "_"))
+
+        # endpoint 2
+        if self.config_dict["endpoints"][1] != "":
+            scale_right = Label(self.frame_judg, text=self.config_dict["endpoints"][1], font=(
+                self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
+            scale_right.pack(side="left", expand=True, padx=10, pady=5)
+
+    def dynamic_fc_buttons(self):
+        if not self.config_dict["dynamic_img"]:
+            for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
+                self.text_or_image_button(text=str(x), value=str(
+                    name).casefold().replace(" ", "_"), side=random.sample(["left", "right"], 1))
+
+        else:
+            # reset images dict
+            self.fc_images = {}
+            for x, name in zip(self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
+                # store images in dict (otherwise they won't be displayed)
+                self.fc_images[x] = self.resize_image(x)
+                self.text_or_image_button(value=str(name).casefold().replace(
+                    " ", "_"), image=self.fc_images[x], side=random.choice(["left", "right"]))
 
     def submit_button(self, continue_func):
         """Display a submit button that takes different continuation functions."""
@@ -827,7 +837,7 @@ class Experiment(Window):
             self.item_text.config(text=self.masked)
             self.enable_submit()
 
-    def save_judgment_next_item(self):
+    def submit_judgment(self):
         """Submit the judgment (likert, FC, image) as well as the reaction times and continue to next item. If at the end of the item list, move on to critical section (if currently in warm-up) or feedback section."""
         # if no selection was made using the radio buttons, display error
         if self.judgment.get() == "":
@@ -841,57 +851,73 @@ class Experiment(Window):
             else:
                 reaction_time = time.time() - self.time_start - self.sound.get_length()
 
-            # set up all the info that should be written to the file (in that order)
-            out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(self.items.iloc[self.item_counter, 1:4]), [
-                self.judgment.get()], [str(round(reaction_time, 5))]]
-
-            # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
-            out_l = [str(item).casefold()
-                     for sublist in out_l for item in sublist]
-            self.outdf.loc[len(self.outdf)] = out_l
-
             # progress report
             print(f"Done with item {self.item_counter + 1}/{len(self.items)}!")
 
-            # reset buttons for next item and increase item counter
-            self.judgment.set("")
-            self.item_counter += 1
+            self.save_judgment(reaction_time)
+            self.next_item_general()
 
-            # if there are more items to be shown, do that
-            if self.item_counter < len(self.items):
-                if self.config_dict["use_text_stimuli"]:
-                    self.next_text_item()
-                if not self.config_dict["use_text_stimuli"]:
-                    self.next_audio_item()
-                if self.config_dict["dynamic_fc"] or self.config_dict["dynamic_img"]:
-                    self.next_forced_choice_item()
-                    # and reset the time counter for the reaction times
-                self.time_start = time.time()
-            # otherwise either go to the feedback section or enter the critical stage of the exp
-            else:
-                if self.phases["critical"]:
-                    self.empty_window()
-                    self.display_feedback()
-                elif not self.phases["critical"]:
-                    print("\nWarm-Up completed. Proceeding with critical phase now.\n")
-                    self.empty_window()
-                    self.init_critical()
+    def next_item_general(self):
+        # reset buttons for next item and increase item counter
+        self.judgment.set("")
+        self.item_counter += 1
+        # if there are more items to be shown, do that
+        if self.item_counter < len(self.items):
+            if self.config_dict["use_text_stimuli"]:
+                self.next_text_item()
+            if not self.config_dict["use_text_stimuli"]:
+                self.next_audio_item()
+            if self.config_dict["dynamic_fc"] or self.config_dict["dynamic_img"]:
+                self.next_forced_choice_item()
+                # and reset the time counter for the reaction times
+            self.time_start = time.time()
+        # otherwise either go to the feedback section or enter the critical stage of the exp
+        else:
+            self.item_list_over()
+
+    def item_list_over(self):
+        self.empty_window()
+        if self.phases["critical"]:
+            self.display_feedback()
+        elif not self.phases["critical"]:
+            print("\nWarm-Up completed. Proceeding with critical phase now.\n")
+            self.init_critical()
+
+    def item_list_over_spr(self):
+        self.empty_window()
+        if self.phases["critical"]:
+            # remove the binding from the space bar
+            self.root.unbind("<space>")
+            # go to the feedback section
+            self.display_feedback()
+        # if we are at the end of the warm up phase, init critical
+        elif not self.phases["critical"] and self.config_dict["warm_up"]:
+            self.word_index = 0
+            print("\nWarm-Up completed. Proceeding with critical phase now.\n")
+            self.init_critical()
+
+    def save_judgment(self, reaction_time=None):
+        """Compile all the info we need for the results file."""
+        # reaction times for all words
+        if self.config_dict["self_paced_reading"]:
+            out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(
+                self.items.iloc[self.item_counter, 1:4]), [round(value, 5) for value in self.spr_reaction_times.values()]]
+        # judgments
+        else:
+            # set up all the info that should be written to the file (in that order)
+            out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(self.items.iloc[self.item_counter, 1:4]), [
+                self.judgment.get()], [str(round(reaction_time, 5))]]
+            # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
+        out_l = [str(item).casefold()
+                 for sublist in out_l for item in sublist]
+        self.outdf.loc[len(self.outdf)] = out_l
 
     def next_self_paced_reading_item(self):
         """Record reaction times in outdf in self-paced-reading ecperiments and shows the next item. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
         print(f"Done with item {self.item_counter + 1}/{len(self.items)}!")
 
-        # disable the submit button
         self.submit.config(state="disabled")
-
-        # compile all the info we need for the results file
-        out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(
-            self.items.iloc[self.item_counter, 1:4]), [round(value, 5) for value in self.spr_reaction_times.values()]]
-        # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
-        out_l = [str(item).casefold() for sublist in out_l for item in sublist]
-        self.outdf.loc[len(self.outdf)] = out_l
-
-        # make sure that the next item is shown
+        self.save_judgment()
         self.item_counter += 1
 
         # if there are more items to be shown, do that
@@ -902,18 +928,7 @@ class Experiment(Window):
             self.word_index = 0
             self.item_text.config(text=self.create_masked_item())
         else:
-            if self.phases["critical"]:
-                # remove the binding from the space bar
-                self.root.unbind("<space>")
-                # go to the feedback section
-                self.empty_window()
-                self.display_feedback()
-            # if we are at the end of the warm up phase, clear window and init critical
-            elif not self.phases["critical"]:
-                self.word_index = 0
-                print("\nWarm-Up completed. Proceeding with critical phase now.\n")
-                self.empty_window()
-                self.init_critical()
+            self.item_list_over_spr()
 
     def next_text_item(self):
         # disable the likert scale button
@@ -935,18 +950,15 @@ class Experiment(Window):
         self.flash_play(0)
 
     def next_forced_choice_item(self):
-        # in case of dynamic FC we need to update the radio buttons; choices are randomized
-        if self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
-            for i, x, name in zip(random.sample(range(len(self.likert_list)), len(self.likert_list)), self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
+        self.fc_images = {}
+        for i, txt_or_img, col_names in zip(random.sample(range(len(self.likert_list)), len(self.likert_list)), self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
+            if self.config_dict["dynamic_fc"] and not self.config_dict["dynamic_img"]:
                 self.likert_list[i].config(
-                    text=x, value=name)
-        # update the images; order is randomized
-        elif self.config_dict["dynamic_img"]:
-            self.fc_images = {}
-            for i, x, name in zip(random.sample(range(len(self.likert_list)), len(self.likert_list)), self.items.iloc[self.item_counter, 4:], self.items.iloc[:, 4:].columns):
-                self.fc_images[x] = self.resize_image(x)
+                    text=txt_or_img, value=col_names)
+            elif self.config_dict["dynamic_img"]:
+                self.fc_images[txt_or_img] = self.resize_image(txt_or_img)
                 self.likert_list[i].config(
-                    text=None, value=name, image=self.fc_images[x])
+                    text=None, value=col_names, image=self.fc_images[txt_or_img])
 
     def save_feedback(self):
         """Save participant feedback file together with the results, but under a different name; all feedback texts together in a single file."""
