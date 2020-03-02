@@ -3,6 +3,7 @@
 import datetime
 import glob
 import json
+import logging
 import os
 import random  # randomize items, and FC options
 import re  # regular expressions
@@ -34,7 +35,7 @@ from PIL import Image, ImageTk
     - for dynamic FC images, add REJECT option
 
     FIXME:
-    - 
+    - change the handling of the item file to move away from positional columns (like items being the first column), to column names (df["item"]); potentially pass the names of them during Experiment class initialization
 '''
 
 
@@ -87,12 +88,13 @@ class Experiment(Window):
     config_core = ["experiment_title", "warm_up",
                    "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
 
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         """Initialie the experiment class and start up the tkinter GUI.
 
         Arguments:
             config {str} -- Python script name that contains the experiment's configuration parameters.
         """
+        self.logger = logger or logging.getLogger(__name__)
         self.config = config
         self.config_dict = self.get_config_dict(self.config)
 
@@ -180,7 +182,7 @@ class Experiment(Window):
         self.retrieve_items(
             self.config_dict["warm_up_file"], self.config_dict["warm_up"])
         self.prepare_results_df()
-        print("Starting Warm-Up phase.\n")
+        self.logger.info("Starting Warm-Up phase.")
         self.display_spacer_frame()
         self.display_short(self.config_dict["warm_up_title"], 5)
         self.display_short(self.config_dict["warm_up_description"])
@@ -225,14 +227,14 @@ class Experiment(Window):
             self.send_confirmation_email()
 
         self.submit_button(self.root.destroy)
-        print(
-            f"\nAll Participants have been tested. If you want to test more than {self.config_dict['participants']} people, increase the amount in the specs file!")
+        self.logger.info(
+            f"All Participants have been tested. If you want to test more than {self.config_dict['participants']} people, increase the amount in the specs file!")
 
     ''' SECTION II: display methods used by the initializing functions '''
 
     def display_short(self, text, size_mod=0, side="top"):
         """Display a short message without word wrap enabled. Show nothing if instruction text is empty."""
-        if text != "":
+        if text:
             frame = Frame(self.root)
             frame.pack(expand=False, fill="both", side="top", pady=2)
             label = Label(frame, text=text, font=(
@@ -241,7 +243,7 @@ class Experiment(Window):
 
     def display_long(self, text, size_mod=0):
         """Display a long message with word wrap enabled. Show nothing if instruction text is empty."""
-        if text != "":
+        if text:
             frame = Frame(self.root)
             frame.pack(expand=False, fill="both",
                        side="top", pady=10, padx=25)
@@ -353,9 +355,9 @@ class Experiment(Window):
         self.phases["critical"] = False
 
         # unless the feedback text is empty, show a frame to allow feedback entry
-        if self.config_dict["feedback"] == "":
+        if not self.config_dict["feedback"]:
             self.display_over()
-        elif not self.config_dict["feedback"] == "":
+        elif self.config_dict["feedback"]:
             # instruction for the feedback
             self.display_spacer_frame()
 
@@ -380,11 +382,9 @@ class Experiment(Window):
         self.display_spacer_frame()
         self.display_long(self.config_dict["bye_message"], 10)
         self.display_line()
-
         self.phases["finished"] = True
         self.root.after(5000, self.root.destroy)
-        print("\nExperiment has finished.\n")
-        # save the data set
+        self.logger.info("Experiment has finished.")
         self.save_multi_ext(self.outdf, self.outfile,
                             self.config_dict["results_file_extension"])
         print(self.outdf)
@@ -417,7 +417,7 @@ class Experiment(Window):
             config_list = file.read().splitlines()
         # remove all comments
         variable_list = [x.strip().split("#")[0]
-                         for x in config_list if not x.strip().split("#")[0] == ""]
+                         for x in config_list if x.strip().split("#")[0]]
 
         # add all values to a dictionary
         config_dict = {key: eval(value)
@@ -432,24 +432,24 @@ class Experiment(Window):
         if compare_config == list(self.config_dict.keys()):
             return True
         else:
-            print(f"\nThese entries are either missing from {self.config} or have been added to it:\n" + str(list(set(compare_config)
-                                                                                                                  ^ set(list(self.config_dict.keys())))))
+            self.logger.warning(f"These entries are either missing from {self.config} or have been added to it:\n" + str(list(set(compare_config)
+                                                                                                                              ^ set(list(self.config_dict.keys())))))
             return False
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
         """Generate a random participant id and set it as the id_string property."""
         self.id_string = ''.join(random.choice(chars) for _ in range(size))
-        print(f"\nNew Participant ID generated: {self.id_string}\n")
+        self.logger.info(f"New Participant ID generated: {self.id_string}")
 
     def housekeeping(self):
         """Store and retrieve participant number from file as well as the configuration settings as a json file. Also checks that configuration has not changed between different runs of the same experiment."""
         if not os.path.isdir(self.config_dict["experiment_title"] + "_results"):
             os.makedirs(self.config_dict["experiment_title"] + "_results")
         # if participant and saved config file do not exist, create them
-        if not os.path.isfile(self.part_and_list_file):
-            self.create_housekeeping_files()
-        else:
+        try:
             self.read_and_check_housekeeping_files()
+        except FileNotFoundError:
+            self.create_housekeeping_files()
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
 
@@ -470,7 +470,7 @@ class Experiment(Window):
         # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
         if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
             self.display_long(
-                f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment to proceed.")
+                f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment (e.g. by changing the experiment title) to proceed.")
             self.phases["problem"] = True
         if self.participant_number == self.config_dict["participants"]:
             self.init_experiment_finished()
@@ -481,8 +481,8 @@ class Experiment(Window):
         self.participant_number += 1
         with open(self.part_and_list_file, 'w') as file:
             file.write(str(self.participant_number))
-        print(
-            f"Starting with Participant Number {self.participant_number}/{self.config_dict['participants']} now! Participant was assigned to Item File {self.item_list_no}\n")
+        self.logger.info(
+            f"Starting with Participant Number {self.participant_number}/{self.config_dict['participants']} now! Participant was assigned to Item File {self.item_list_no}")
 
     def prepare_results_df(self):
         """Initialize the results df with appropriate header depending on the experiment. Set the df as outdf."""
@@ -521,24 +521,25 @@ class Experiment(Window):
             self.participant_number -= 1
             with open(self.part_and_list_file, 'w') as file:
                 file.write(str(self.participant_number))
-            print(
-                "Participant will not be counted towards the amount of people to be tested.\n")
+            self.logger.info(
+                "Participant will not be counted towards the amount of people to be tested.")
         else:
-            print("Results file will not be deleted and the participant will count towards the specified amount.\n")
+            self.logger.info(
+                "Results file will not be deleted and the participant will count towards the specified amount.")
             self.save_multi_ext(self.outdf, self.outfile,
                                 self.config_dict["results_file_extension"])
 
     def delete_file(self, file):
         """Delete files or directories."""
-        if os.path.exists(file):
-            if os.path.isfile(file):
-                os.remove(file)
-                print(f"\nFile deleted: {file}\n")
-            if os.path.isdir(file):
-                shutil.rmtree(file)
-                print(f"\nDirectory and all contained files deleted: {file}\n")
-        else:
-            print(f"\nFile does not exist: {file}\n")
+        try:
+            os.remove(file)
+            self.logger.info(f"\nFile deleted: {file}")
+        except PermissionError:
+            shutil.rmtree(file)
+            self.logger.info(
+                f"\nDirectory and all contained files deleted: {file}")
+        except FileNotFoundError:
+            self.logger.info(f"\nFile does not exist: {file}")
 
     def delete_all_results(self):
         """Delete both the results directory (including configuration json and feedback file) as well as the participants housekeeping file."""
@@ -555,16 +556,16 @@ class Experiment(Window):
         files_dir = self.config_dict["experiment_title"] + "_results/"
         results_files = sorted(
             glob.glob(files_dir + f'*{self.config_dict["results_file_extension"]}'))
-
         # remove the feedback file
-        if files_dir + "FEEDBACK" + self.config_dict["results_file_extension"] in results_files:
+        try:
             results_files.remove(files_dir + "FEEDBACK" +
                                  self.config_dict["results_file_extension"])
-
+        except ValueError:
+            pass
         # print out which files were found as well as their size
-        print(f'\nFound {len(results_files)} results files:\n')
+        self.logger.info(f'Found {len(results_files)} results files:')
         for file in results_files:
-            print(
+            self.logger.info(
                 f"{file} \t {round(os.path.getsize(file) / 1000, 3)} KB")
 
         dfs = [self.read_multi_ext(x, self.config_dict["results_file_extension"])
@@ -574,7 +575,7 @@ class Experiment(Window):
         self.save_multi_ext(
             df_all, outfile, self.config_dict["results_file_extension"])
 
-        print(f"\nMerged results file generated: {outfile}")
+        self.logger.info(f"Merged results file generated: {outfile}")
 
     def read_multi_ext(self, file, extension=None):
         """Read csv, xlsx, and txt files and returns a pandas DataFrame.
@@ -666,8 +667,8 @@ class Experiment(Window):
             server.sendmail(
                 sender_email, self.config_dict["receiver_email"], text)
 
-        print(
-            f"\nConfirmation e-mail sent to:\t{self.config_dict['receiver_email']}\nAttached file:\t{filename}\n")
+        self.logger.info(
+            f"Confirmation e-mail sent to:\t{self.config_dict['receiver_email']}\nAttached file:\t{filename}")
 
     ''' SECTION IV: Buttons '''
 
@@ -710,7 +711,7 @@ class Experiment(Window):
     def likert_style_buttons(self):
         """Display likert style radio buttons, optionally with endpoints. Also used for (static) Forced Choice."""
         # endpoint 1
-        if self.config_dict["endpoints"][0] != "":
+        if self.config_dict["endpoints"][0]:
             scale_left = Label(self.frame_judg, text=self.config_dict["endpoints"][0], font=(
                 self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
             scale_left.pack(side="left", expand=True, padx=10, pady=5)
@@ -721,7 +722,7 @@ class Experiment(Window):
                 x).casefold().replace(" ", "_"))
 
         # endpoint 2
-        if self.config_dict["endpoints"][1] != "":
+        if self.config_dict["endpoints"][1]:
             scale_right = Label(self.frame_judg, text=self.config_dict["endpoints"][1], font=(
                 self.config_dict["font"], self.config_dict["basesize"]), fg="gray20")
             scale_right.pack(side="left", expand=True, padx=10, pady=5)
@@ -837,9 +838,9 @@ class Experiment(Window):
     def submit_judgment(self):
         """Submit the judgment (likert, FC, image) as well as the reaction times and continue to next item. If at the end of the item list, move on to critical section (if currently in warm-up) or feedback section."""
         # if no selection was made using the radio buttons, display error
-        if self.judgment.get() == "":
+        if not self.judgment.get():
             self.display_error(self.config_dict["error_judgment"])
-        elif self.judgment.get() != "":
+        elif self.judgment.get():
             # reaction times: subtract start time from stop time to get reaction times
             if self.config_dict["use_text_stimuli"]:
                 reaction_time = time.time() - self.time_start - \
@@ -849,9 +850,10 @@ class Experiment(Window):
                 reaction_time = time.time() - self.time_start - self.sound.get_length()
 
             # progress report
-            print(f"Done with item {self.item_counter + 1}/{len(self.items)}!")
+            self.logger.info(
+                f"Done with item {self.item_counter + 1}/{len(self.items)}!")
 
-            self.save_judgment(reaction_time)
+            self.save_dependent_measures(reaction_time)
             self.next_item_general()
 
     def next_item_general(self):
@@ -860,7 +862,7 @@ class Experiment(Window):
         self.judgment.set("")
         self.item_counter += 1
         # if there are more items to be shown, do that
-        if self.item_counter < len(self.items):
+        try:
             # reset the time counter for the reaction times
             self.time_start = time.time()
             if self.config_dict["use_text_stimuli"]:
@@ -870,7 +872,7 @@ class Experiment(Window):
             if self.config_dict["dynamic_fc"] or self.config_dict["dynamic_img"]:
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
-        else:
+        except IndexError:
             self.item_list_over()
 
     def item_list_over(self):
@@ -879,7 +881,8 @@ class Experiment(Window):
         if self.phases["critical"]:
             self.display_feedback()
         elif not self.phases["critical"]:
-            print("\nWarm-Up completed. Proceeding with critical phase now.\n")
+            self.logger.info(
+                "Warm-Up completed. Proceeding with critical phase now.")
             self.init_critical()
 
     def item_list_over_spr(self):
@@ -893,10 +896,11 @@ class Experiment(Window):
         # if we are at the end of the warm up phase, init critical
         elif not self.phases["critical"] and self.config_dict["warm_up"]:
             self.word_index = 0
-            print("\nWarm-Up completed. Proceeding with critical phase now.\n")
+            self.logger.info(
+                "Warm-Up completed. Proceeding with critical phase now.")
             self.init_critical()
 
-    def save_judgment(self, reaction_time=None):
+    def save_dependent_measures(self, reaction_time=None):
         """Compile all the info we need for the results file."""
         # reaction times for all words
         if self.config_dict["self_paced_reading"]:
@@ -914,20 +918,21 @@ class Experiment(Window):
 
     def next_self_paced_reading_item(self):
         """Record reaction times in outdf in self-paced-reading ecperiments and shows the next item. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
-        print(f"Done with item {self.item_counter + 1}/{len(self.items)}!")
+        self.logger.info(
+            f"Done with item {self.item_counter + 1}/{len(self.items)}!")
 
         self.submit.config(state="disabled")
-        self.save_judgment()
+        self.save_dependent_measures()
         self.item_counter += 1
 
-        # if there are more items to be shown, do that
-        if self.item_counter < len(self.items):
+        try:
             # empty the stored reaction times
             self.spr_reaction_times = {}
             # run masking on new item and reset the word index
             self.word_index = 0
             self.item_text.config(text=self.create_masked_item())
-        else:
+        # otherwise either go to the feedback section or enter the critical stage of the exp
+        except IndexError:
             self.item_list_over_spr()
 
     def next_text_item(self):
@@ -972,7 +977,7 @@ class Experiment(Window):
             (time.time() - self.experiment_started)/60, 2)
 
         # save the feedback with id string and internal number as csv file
-        if self.feedback.get().replace(" ", "") != "" and not self.phases["quit"]:
+        if self.feedback.get().replace(" ", "") and not self.phases["quit"]:
             feedback = self.feedback.get()
         elif self.phases["quit"]:
             feedback = f"[CANCELLED at {self.item_counter + 1}/{len(self.items)} items]"
@@ -981,12 +986,11 @@ class Experiment(Window):
 
         out_l = [self.id_string, experiment_duration,
                  self.participant_number, feedback]
-
         # open the feedback file or create one if it doesn't exist
-        if os.path.isfile(feedback_file):
+        try:
             df_feedback = self.read_multi_ext(
                 feedback_file, self.config_dict["results_file_extension"])
-        else:
+        except FileNotFoundError:
             df_feedback = pd.DataFrame(
                 columns=["id", "duration_minutes", "part_no", "feedback"])
         # add the new row of the current participant and save the file
@@ -1019,15 +1023,18 @@ class Experiment(Window):
             self.root.destroy()
             self.phases["quit"] = True
             if self.phases["critical"] and not self.phases["finished"]:
-                print("\nIMPORTANT!: Experiment was quit manually.")
+                self.logger.warning(
+                    "IMPORTANT!: Experiment was quit manually.")
                 self.delete_unfinished_participant()
                 self.save_feedback()
             else:
-                print(
-                    "\nExperiment was quit manually. This happened before the critical section, so there is no action required.")
+                self.logger.info(
+                    "Experiment was quit manually before the critical section.")
 
 
 if __name__ == '__main__':
+    logging.basicConfig(filename="experiment.log", level=logging.INFO,
+                        format="%(asctime)s:%(levelname)s:%(funcName)s:%(message)s")
     Exp = Experiment("test.py")
     # print(Exp)
     Exp.init_meta()
