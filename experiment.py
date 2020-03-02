@@ -88,13 +88,13 @@ class Experiment(Window):
     config_core = ["experiment_title", "warm_up",
                    "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
 
-    def __init__(self, config, logger=None):
+    def __init__(self, config):
         """Initialie the experiment class and start up the tkinter GUI.
 
         Arguments:
             config {str} -- Python script name that contains the experiment's configuration parameters.
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.config = config
         self.config_dict = self.get_config_dict(self.config)
 
@@ -173,6 +173,7 @@ class Experiment(Window):
 
     def init_exposition(self):
         """Initialize the expository section of the experiment. Inform participant about the experimental task and procedure."""
+        self.logger.info("Starting exposition.")
         self.display_spacer_frame()
         self.display_long(self.config_dict["expo_text"], 8)
         self.submit_button(self.exit_exposition)
@@ -191,6 +192,7 @@ class Experiment(Window):
     def init_critical(self):
         """Initialize the critical section of the experiment."""
         self.phases["critical"] = True
+        self.logger.info("Starting critical phase.")
         self.housekeeping_file_update()
         self.retrieve_items()
         if not self.config_dict["warm_up"]:
@@ -450,6 +452,8 @@ class Experiment(Window):
             self.read_and_check_housekeeping_files()
         except FileNotFoundError:
             self.create_housekeeping_files()
+            self.logger.exception(
+                f"Housekeeping file '{self.part_and_list_file}' not found, creating one instead.")
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
 
@@ -533,13 +537,13 @@ class Experiment(Window):
         """Delete files or directories."""
         try:
             os.remove(file)
-            self.logger.info(f"\nFile deleted: {file}")
+            self.logger.info(f"File deleted: {file}")
         except PermissionError:
             shutil.rmtree(file)
-            self.logger.info(
-                f"\nDirectory and all contained files deleted: {file}")
+            self.logger.exception(
+                f"Directory and all contained files deleted: {file}")
         except FileNotFoundError:
-            self.logger.info(f"\nFile does not exist: {file}")
+            self.logger.exception(f"File does not exist: {file}")
 
     def delete_all_results(self):
         """Delete both the results directory (including configuration json and feedback file) as well as the participants housekeeping file."""
@@ -561,7 +565,7 @@ class Experiment(Window):
             results_files.remove(files_dir + "FEEDBACK" +
                                  self.config_dict["results_file_extension"])
         except ValueError:
-            pass
+            self.logger.exception(f"Feedback file not in file list.")
         # print out which files were found as well as their size
         self.logger.info(f'Found {len(results_files)} results files:')
         for file in results_files:
@@ -873,6 +877,7 @@ class Experiment(Window):
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError:
+            self.logger.exception("No more items to show.")
             self.item_list_over()
 
     def item_list_over(self):
@@ -933,6 +938,7 @@ class Experiment(Window):
             self.item_text.config(text=self.create_masked_item())
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError:
+            self.logger.exception("No more items to show.")
             self.item_list_over_spr()
 
     def next_text_item(self):
@@ -972,7 +978,6 @@ class Experiment(Window):
         """Save participant feedback file together with the results, but under a different name; all feedback texts together in a single file."""
         feedback_file = self.config_dict["experiment_title"] + "_results/" + \
             "FEEDBACK" + self.config_dict["results_file_extension"]
-
         experiment_duration = round(
             (time.time() - self.experiment_started)/60, 2)
 
@@ -993,6 +998,8 @@ class Experiment(Window):
         except FileNotFoundError:
             df_feedback = pd.DataFrame(
                 columns=["id", "duration_minutes", "part_no", "feedback"])
+            self.logger.exception(
+                f"No feedback file '{feedback_file}' found, creating one instead.")
         # add the new row of the current participant and save the file
         df_feedback.loc[len(df_feedback)] = out_l
         self.save_multi_ext(df_feedback, feedback_file,
@@ -1034,7 +1041,8 @@ class Experiment(Window):
 
 if __name__ == '__main__':
     logging.basicConfig(filename="experiment.log", level=logging.INFO,
-                        format="%(asctime)s:%(levelname)s:%(funcName)s:%(message)s")
+                        format="%(asctime)s - %(name)s - %(levelname)-8s - %(funcName)s - %(message)s")
+
     Exp = Experiment("test.py")
     # print(Exp)
     Exp.init_meta()
