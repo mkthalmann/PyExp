@@ -17,6 +17,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from io import BytesIO  # linked files
+from itertools import cycle
 from threading import Timer
 from tkinter import *
 from tkinter import messagebox
@@ -36,7 +37,6 @@ from PIL import Image, ImageTk
 
     FIXME:
     - change the handling of the item file to move away from positional columns (like items being the first column), to column names (df["item"]); potentially pass the names of them during Experiment class initialization
-    - portable code instead of hardcoding path separators: glob.glob(os.path.join('mydir', 'subdir', '*.html')); os.listdir(os.path.join('mydir', 'subdir'))
 '''
 
 
@@ -86,7 +86,7 @@ class Experiment(Window):
     """Main class for the experiment. Relies on python file upon instantiation with the settings to be used."""
 
     # class attribute: core values which need to stay the same over the course of one set of participants
-    config_core = ["experiment_title", "warm_up",
+    config_core = ["experiment_title", "meta_fields", "warm_up",
                    "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
 
     def __init__(self, config):
@@ -230,7 +230,7 @@ class Experiment(Window):
         if self.config_dict["confirm_completion"]:
             self.send_confirmation_email()
 
-        self.submit_button(self.root.destroy)
+        self.submit_button(self.root.destroy, "Exit")
         self.logger.info(
             f"All Participants have been tested. If you want to test more than {self.config_dict['participants']} people, increase the amount in the specs file!")
 
@@ -381,16 +381,15 @@ class Experiment(Window):
             self.submit_button(self.save_feedback)
 
     def display_over(self):
-        """Show goodbye message and close experiment application after a delay."""
+        """Show goodbye message and exit button."""
         self.empty_window()
         self.display_spacer_frame()
         self.display_long(self.config_dict["bye_message"], 10)
-        self.display_line()
         self.phases["finished"] = True
-        self.root.after(5000, self.root.destroy)
         self.logger.info("Experiment has finished.")
         self.save_multi_ext(self.outdf, self.outfile,
                             self.config_dict["results_file_extension"])
+        self.submit_button(self.on_closing, "Exit")
         print(self.outdf)
 
     def display_spacer_frame(self):
@@ -477,6 +476,11 @@ class Experiment(Window):
         if not {k: self.config_dict[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
             self.display_long(
                 f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment (e.g. by changing the experiment title) to proceed.")
+            self.logger.warning(
+                f"Config dict: { {k: self.config_dict[k] for k in self.config_core} }")
+            self.logger.warning(
+                f"Compare dict: { {k: compare_config[k] for k in self.config_core} }")
+            self.submit_button(self.root.destroy, "Exit")
             self.phases["problem"] = True
         if self.participant_number == self.config_dict["participants"]:
             self.experiment_finished()
@@ -626,6 +630,81 @@ class Experiment(Window):
         elif extension == ".txt":
             df.to_table(file, index=False)
 
+    def to_latin_square(self, df, outname, sub_exp_col="sub_exp", cond_col="cond", item_col="item", item_number_col="item_number"):
+        """Take a dataframe with all conditions and restructure it with Latin Square. Saves the files.
+
+        Arguments:
+            df {df} -- pandas Dataframe with all conditions for each item
+            outname {str} -- Name for the saved files (uniqueness handled automatically); include extension; cannot include the word 'nonfiller'.
+
+        Keyword Arguments:
+            sub_exp_col {str} -- Column containing the subexperiment identifier (default: {"sub_exp"})
+            cond_col {str} -- Column containing the condition identifiers (default: {"cond"})
+            item_col {str} -- Column with the item text (default: {"item"})
+            item_number_col {str} -- Column with the item number (default: {"item_number"})
+
+        Returns:
+            list -- List with all the names of the files that were saved to disk
+        """
+        if "nonfiller" in outname:
+            raise Exception(
+                f"File name {outname} is wrong; do not use 'nonfiller' in the outfile name.")
+        dfs_dict = {}
+        name, extension = os.path.splitext(outname)
+        # split the dataframe by the sub experiment value
+        dfs = [pd.DataFrame(x) for _, x in df.groupby(
+            sub_exp_col, as_index=False)]
+        for frame in dfs:
+            # get the unique condition values and sort them
+            conditions = sorted(list(set(frame[cond_col])))
+
+            # do a cartesian product of item numbers and conditions
+            products = [(item, cond) for item in set(frame[item_number_col])
+                        for cond in conditions]
+            # check if all such products exist in the dataframe
+            check_list = [((frame[item_number_col] == item)
+                           & (frame[cond_col] == cond)).any() for item, cond in products]
+            # if they are not all there, raise an error and show which combos are missing
+            missing_combos = ', '.join([''.join(map(str, product)) for product, boolean in zip(
+                products, check_list) if not boolean])
+            if not all(check_list):
+                raise Exception(
+                    f"Not all permutations of items and conditions are present in the dataframe. Missing combinations: {missing_combos}")
+
+            # generate the appropriate amount of lists
+            for k in range(len(conditions)):
+                # order the conditions to match the list being created
+                lat_conditions = conditions[k:] + conditions[:k]
+                # generate (and on subsequent runs reset) the new df with all the columns in the argument df
+                out_df = pd.DataFrame(columns=frame.columns)
+                # look for the appriate rows in the argument df (using the conditions multiple times with 'cycle')
+                for item, cond in zip(set(sorted(frame[item_number_col])), cycle(lat_conditions)):
+                    out_l = [out_df, frame[frame.item_number.eq(
+                        item) & frame.cond.eq(cond)]]
+                    out_df = pd.concat(out_l)
+                # reorder the most important columns and just add the rest (if any)
+                columns_to_order = [item_col, sub_exp_col,
+                                    item_number_col, cond_col]
+                new_columns = columns_to_order + \
+                    (out_df.columns.drop(columns_to_order).tolist())
+                out_df = out_df[new_columns]
+                # add a 'nonfiller' suffix if several lists are being made; this is the way we will distinguish filler from critical dfs
+                temp_name = name if len(
+                    lat_conditions) == 1 else f"{name}_nonfiller"
+                dfs_dict[temp_name] = out_df
+
+        # separate critical and filler dfs
+        dfs_critical = [dfs_dict[x] for x in dfs_dict if "nonfiller" in x]
+        dfs_filler = [dfs_dict[x] for x in dfs_dict if "nonfiller" not in x]
+
+        # add all filler lists to the critical ones
+        for filler in dfs_filler:
+            for i, df in enumerate(dfs_critical):
+                dfs_critical[i] = pd.concat([df, filler])
+
+        for i, df in enumerate(dfs_critical):
+            save_multi_ext(df, f"{name}{i+1}{extension}")
+
     def send_confirmation_email(self):
         """Send confirmation e-mail to specified recipient with merged results file attached."""
         subject = f"{self.config_dict['experiment_title']}: Experiment Finished"
@@ -750,13 +829,22 @@ class Experiment(Window):
                 self.text_or_image_button(value=str(name).casefold().replace(
                     " ", "_"), image=self.fc_images[x], side=random.choice(["left", "right"]))
 
-    def submit_button(self, continue_func):
-        """Display a submit button that takes different continuation functions."""
+    def submit_button(self, continue_func, text=None):
+        """Display a submit button that takes different continuation functions.
+
+        Arguments:
+            continue_func {function} -- Function that should be executed on button press
+
+        Keyword Arguments:
+            text {str} -- Text to be displayed on the button; if None, value will be taken from the config file (default: {None})
+        """
+        if text == None:
+            text = self.config_dict["button_text"]
         self.display_line()
 
         frame_submit = Frame(self.root)
         frame_submit.pack(expand=False, fill="both", side="top", pady=10)
-        self.submit = Button(frame_submit, text=self.config_dict["button_text"], fg="blue", font=(self.config_dict["font"], self.config_dict["basesize"] - 10), padx=10, pady=5,
+        self.submit = Button(frame_submit, text=text, fg="blue", font=(self.config_dict["font"], self.config_dict["basesize"] - 10), padx=10, pady=5,
                              command=continue_func, highlightcolor="gray90", highlightbackground="white", highlightthickness=0)
         self.submit.pack()
         # in the critical portion of the audio stimuli, the button is deactivated by default and becomes available after the item was played in full
@@ -1041,7 +1129,7 @@ class Experiment(Window):
                 self.save_feedback()
             else:
                 self.logger.info(
-                    "Experiment was quit manually before the critical section.")
+                    "Experiment was quit manually outside of the critical section.")
 
 
 if __name__ == '__main__':
