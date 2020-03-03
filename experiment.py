@@ -36,6 +36,7 @@ from PIL import Image, ImageTk
 
     FIXME:
     - change the handling of the item file to move away from positional columns (like items being the first column), to column names (df["item"]); potentially pass the names of them during Experiment class initialization
+    - portable code instead of hardcoding path separators: glob.glob(os.path.join('mydir', 'subdir', '*.html')); os.listdir(os.path.join('mydir', 'subdir'))
 '''
 
 
@@ -99,7 +100,7 @@ class Experiment(Window):
         self.config_dict = self.get_config_dict(self.config)
 
         self.root = Tk()
-        self.gui_setup()
+        self.setup_gui()
 
         # time of testing
         self.experiment_started = time.time()  # track eperiment duration
@@ -109,8 +110,8 @@ class Experiment(Window):
         # housekeeping files which track participants and experiment configuration
         self.part_and_list_file = self.config_dict["experiment_title"] + \
             "_participants.txt"
-        self.config_file = self.config_dict["experiment_title"] + \
-            "_results/config.json"
+        self.config_file = os.path.join(
+            f"{self.config_dict['experiment_title']}_results", "config.json")
 
         # store meta data
         self.meta_entries = []
@@ -130,8 +131,8 @@ class Experiment(Window):
 
         # images
         self.logo = self.resize_image(self.config_dict["logo"], 100)
-        self.playimage = self.resize_image(
-            "media/play.png", 100) if not self.config_dict["use_text_stimuli"] else None
+        self.playimage = self.resize_image(os.path.join(
+            "media", "play.png"), 100) if not self.config_dict["use_text_stimuli"] else None
         self.fc_images = {}  # for dynamic FC with images
         # feedback text
         self.feedback = StringVar()
@@ -139,7 +140,7 @@ class Experiment(Window):
         self.phases = dict.fromkeys(
             ["critical", "finished", "quit", "problem"], False)
 
-    def gui_setup(self):
+    def setup_gui(self):
         """Generate the window title and perform some general setups."""
         self.root.wm_title(self.config_dict["window_title"])
         self.root.geometry(self.config_dict["geometry"])
@@ -157,7 +158,7 @@ class Experiment(Window):
 
     ''' SECTION I: initializing methods for the various phases of the experiment '''
 
-    def init_meta(self):
+    def start_experiment(self):
         """Initialize the meta-data collection section of the experiment."""
         if self.check_config():
             self.display_spacer_frame()
@@ -170,15 +171,16 @@ class Experiment(Window):
         else:
             self.display_long(
                 f"You seem to have edited some of the configuration identifiers in {self.config}.\nThe experiment cannot proceed unless all and only those keys are present which are supposed to be there.")
+        self.root.mainloop()
 
-    def init_exposition(self):
+    def start_exposition_phase(self):
         """Initialize the expository section of the experiment. Inform participant about the experimental task and procedure."""
         self.logger.info("Starting exposition.")
         self.display_spacer_frame()
         self.display_long(self.config_dict["expo_text"], 8)
         self.submit_button(self.exit_exposition)
 
-    def init_warm_up(self):
+    def start_warm_up_phase(self):
         """Initialize the warm-up section of the experiment. Only if specified by the user."""
         self.retrieve_items(
             self.config_dict["warm_up_file"], self.config_dict["warm_up"])
@@ -189,7 +191,7 @@ class Experiment(Window):
         self.display_short(self.config_dict["warm_up_description"])
         self.init_items()
 
-    def init_critical(self):
+    def start_critical_phase(self):
         """Initialize the critical section of the experiment."""
         self.phases["critical"] = True
         self.logger.info("Starting critical phase.")
@@ -220,7 +222,7 @@ class Experiment(Window):
             self.submit.config(state="disabled")
         self.time_start = time.time()
 
-    def init_experiment_finished(self):
+    def experiment_finished(self):
         """Show message when all necessary participants have been tested."""
         self.display_long(self.config_dict["finished_message"], 8)
 
@@ -477,7 +479,7 @@ class Experiment(Window):
                 f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment (e.g. by changing the experiment title) to proceed.")
             self.phases["problem"] = True
         if self.participant_number == self.config_dict["participants"]:
-            self.init_experiment_finished()
+            self.experiment_finished()
 
     def housekeeping_file_update(self):
         """Increase the participant number and write it to the participants housekeeping file."""
@@ -491,9 +493,9 @@ class Experiment(Window):
     def prepare_results_df(self):
         """Initialize the results df with appropriate header depending on the experiment. Set the df as outdf."""
         # outfile in new folder with id number attached
-        self.outfile = self.config_dict["experiment_title"] + "_results/" + self.config_dict["results_file"] + "_" + \
-            str(self.participant_number).zfill(len(str(self.config_dict["participants"]))) + "_" + \
-            self.id_string + self.config_dict["results_file_extension"]
+        self.outfile = os.path.join(f"{self.config_dict['experiment_title']}_results",
+                                    f"{self.config_dict['results_file']}_{str(self.participant_number).zfill(len(str(self.config_dict['participants'])))}_{self.id_string}{self.config_dict['results_file_extension']}")
+
         header_list = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
                        ["cond"]]
         # for standard judgment experiments (either text or audio)
@@ -557,13 +559,15 @@ class Experiment(Window):
             "_results_full" + self.config_dict["results_file_extension"]
 
         # Get results files
-        files_dir = self.config_dict["experiment_title"] + "_results/"
+        files_dir = self.config_dict["experiment_title"] + "_results"
         results_files = sorted(
-            glob.glob(files_dir + f'*{self.config_dict["results_file_extension"]}'))
+            glob.glob(os.path.join(
+                files_dir, f'*{self.config_dict["results_file_extension"]}')))
+
         # remove the feedback file
         try:
-            results_files.remove(files_dir + "FEEDBACK" +
-                                 self.config_dict["results_file_extension"])
+            results_files.remove(os.path.join(
+                files_dir, f'FEEDBACK{self.config_dict["results_file_extension"]}'))
         except ValueError:
             self.logger.exception(f"Feedback file not in file list.")
         # print out which files were found as well as their size
@@ -802,13 +806,13 @@ class Experiment(Window):
         # if all selections were made, move on to exposition
         else:
             self.empty_window()
-            self.init_exposition()
+            self.start_exposition_phase()
 
     def exit_exposition(self):
         """End the exposition stage and move on to either warm-up or critical section."""
         self.empty_window()
-        self.init_warm_up(
-        ) if self.config_dict["warm_up"] else self.init_critical()
+        self.start_warm_up_phase(
+        ) if self.config_dict["warm_up"] else self.start_critical_phase()
 
     def next_word(self):
         """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary."""
@@ -820,7 +824,7 @@ class Experiment(Window):
             # start reaction times
             self.time_start = time.time()
         # if the word is in the middle of the item, take the reaction times and reveal the next one
-        elif self.word_index != 0 and self.word_index < len(self.items.iloc[self.item_counter, 0].split()):
+        elif 0 < self.word_index < len(self.items.iloc[self.item_counter, 0].split()):
             # reaction times
             self.spr_reaction_times[self.word_index] = time.time(
             ) - self.time_start
@@ -888,7 +892,7 @@ class Experiment(Window):
         elif not self.phases["critical"]:
             self.logger.info(
                 "Warm-Up completed. Proceeding with critical phase now.")
-            self.init_critical()
+            self.start_critical_phase()
 
     def item_list_over_spr(self):
         """Either launch the feedback or critical section of the experiment (because all items were seen). For self-paced-reading"""
@@ -903,7 +907,7 @@ class Experiment(Window):
             self.word_index = 0
             self.logger.info(
                 "Warm-Up completed. Proceeding with critical phase now.")
-            self.init_critical()
+            self.start_critical_phase()
 
     def save_dependent_measures(self, reaction_time=None):
         """Compile all the info we need for the results file."""
@@ -976,8 +980,9 @@ class Experiment(Window):
 
     def save_feedback(self):
         """Save participant feedback file together with the results, but under a different name; all feedback texts together in a single file."""
-        feedback_file = self.config_dict["experiment_title"] + "_results/" + \
-            "FEEDBACK" + self.config_dict["results_file_extension"]
+        feedback_file = os.path.join(
+            f"{self.config_dict['experiment_title']}_results", f"FEEDBACK{self.config_dict['results_file_extension']}")
+
         experiment_duration = round(
             (time.time() - self.experiment_started)/60, 2)
 
@@ -1044,6 +1049,5 @@ if __name__ == '__main__':
                         format="%(asctime)s - %(name)s - %(levelname)-8s - %(funcName)s - %(message)s")
 
     Exp = Experiment("test.py")
+    Exp.start_experiment()
     # print(Exp)
-    Exp.init_meta()
-    Exp.root.mainloop()
