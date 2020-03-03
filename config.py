@@ -76,6 +76,14 @@ item_lists = 2  # with 4, you should have four lists: $list1, $list2, $list3, $l
 # complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
 item_file = "items/complete_dynamic"
 item_file_extension = ".xlsx"  # .csv; .txt; .xlsx
+
+# column names in item file
+item_number_col = "item_number"
+item_or_file_col = "item"
+sub_exp_col = "sub_exp"
+cond_col = "condition"
+dynamic_txt_or_img_cols = ["opt1", "opt2"]
+
 items_randomize = True
 
 # prefix for the results file

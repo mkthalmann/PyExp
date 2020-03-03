@@ -25,6 +25,7 @@ from urllib.request import urlopen  # linked files
 
 import pandas as pd
 import pygame  # audio
+from pandas.core.common import flatten
 from PIL import Image, ImageTk
 
 
@@ -36,7 +37,7 @@ from PIL import Image, ImageTk
     - for dynamic FC images, add REJECT option
 
     FIXME:
-    - change the handling of the item file to move away from positional columns (like items being the first column), to column names (df["item"]); potentially pass the names of them during Experiment class initialization
+    - 
 '''
 
 
@@ -87,7 +88,7 @@ class Experiment(Window):
 
     # class attribute: core values which need to stay the same over the course of one set of participants
     config_core = ["experiment_title", "meta_fields", "warm_up",
-                   "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file"]
+                   "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols']
 
     def __init__(self, config):
         """Initialie the experiment class and start up the tkinter GUI.
@@ -293,6 +294,15 @@ class Experiment(Window):
         if self.config_dict["items_randomize"] and self.phases["critical"]:
             df_items = df_items.sample(frac=1).reset_index(drop=True)
 
+        # rearrange the columns of the data frame using the entries in item_file_columns
+        columns_to_order = flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'], self.config_dict['item_number_col'],
+                                    self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
+        try:
+            df_items = df_items[columns_to_order]
+        except KeyError as e:
+            self.logger.error(
+                f"Column mismatch. Check the following values: {e}")
+
         self.items = df_items
 
     def display_text_item(self):
@@ -421,7 +431,6 @@ class Experiment(Window):
         # remove all comments
         variable_list = [x.strip().split("#")[0]
                          for x in config_list if x.strip().split("#")[0]]
-
         # add all values to a dictionary
         config_dict = {key: eval(value)
                        for (key, value) in [variable.split(" = ") for variable in variable_list]}
@@ -430,7 +439,7 @@ class Experiment(Window):
     def check_config(self):
         """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
         compare_config = ['fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc',
-                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize']
+                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize']
         # compare the two
         if compare_config == list(self.config_dict.keys()):
             return True
@@ -451,10 +460,10 @@ class Experiment(Window):
         # if participant and saved config file do not exist, create them
         try:
             self.read_and_check_housekeeping_files()
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             self.create_housekeeping_files()
             self.logger.exception(
-                f"Housekeeping file '{self.part_and_list_file}' not found, creating one instead.")
+                f"Housekeeping file '{self.part_and_list_file}' not found, creating one instead: {e}")
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
 
@@ -499,19 +508,18 @@ class Experiment(Window):
         # outfile in new folder with id number attached
         self.outfile = os.path.join(f"{self.config_dict['experiment_title']}_results",
                                     f"{self.config_dict['results_file']}_{str(self.participant_number).zfill(len(str(self.config_dict['participants'])))}_{self.id_string}{self.config_dict['results_file_extension']}")
-
-        header_list = [["id"], ["date"], ["start_time"], ["tester"], self.config_dict["meta_fields"], ["sub_exp"], ["item"],
-                       ["cond"]]
+        header_list = ["id", "date", "start_time", "tester",
+                       self.config_dict["meta_fields"], "sub_exp", "item", "cond"]
         # for standard judgment experiments (either text or audio)
         if (self.config_dict["use_text_stimuli"] and not self.config_dict["self_paced_reading"]) or not self.config_dict["use_text_stimuli"]:
             # add judgments and reaction times
-            header_list = header_list + [["judgment"], ["reaction_time"]]
+            header_list = header_list + ["judgment", "reaction_time"]
         else:
             # add a column for each word in the item (of the first item)
             header_list = header_list + [self.items.iloc[0, 0].split()]
         # flatten the list of lists, remove capitalization and spaces and initialize pandas object
         header_list = [item.casefold().replace(" ", "_")
-                       for sublist in header_list for item in sublist]
+                       for item in flatten(header_list)]
         self.outdf = pd.DataFrame(columns=header_list)
 
     def resize_image(self, x, desired_width=250):
@@ -544,12 +552,12 @@ class Experiment(Window):
         try:
             os.remove(file)
             self.logger.info(f"File deleted: {file}")
-        except PermissionError:
+        except PermissionError as e:
             shutil.rmtree(file)
             self.logger.exception(
                 f"Directory and all contained files deleted: {file}")
-        except FileNotFoundError:
-            self.logger.exception(f"File does not exist: {file}")
+        except FileNotFoundError as e:
+            self.logger.exception(f"File does not exist: {file}; {e}")
 
     def delete_all_results(self):
         """Delete both the results directory (including configuration json and feedback file) as well as the participants housekeeping file."""
@@ -572,8 +580,8 @@ class Experiment(Window):
         try:
             results_files.remove(os.path.join(
                 files_dir, f'FEEDBACK{self.config_dict["results_file_extension"]}'))
-        except ValueError:
-            self.logger.exception(f"Feedback file not in file list.")
+        except ValueError as e:
+            self.logger.exception(f"Feedback file not in file list: {e}")
         # print out which files were found as well as their size
         self.logger.info(f'Found {len(results_files)} results files:')
         for file in results_files:
@@ -968,8 +976,8 @@ class Experiment(Window):
             if self.config_dict["dynamic_fc"] or self.config_dict["dynamic_img"]:
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
-        except IndexError:
-            self.logger.exception("No more items to show.")
+        except IndexError as e:
+            self.logger.exception(f"No more items to show: {e}")
             self.item_list_over()
 
     def item_list_over(self):
@@ -999,18 +1007,19 @@ class Experiment(Window):
 
     def save_dependent_measures(self, reaction_time=None):
         """Compile all the info we need for the results file."""
+        # set up all the info that should be written to the file (in that order)
+        out_l = [self.id_string, self.today, self.start_time, self.config_dict["tester"], self.meta_entries_final, list(
+            self.items.iloc[self.item_counter, 1:4])]
         # reaction times for all words
         if self.config_dict["self_paced_reading"]:
-            out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(
-                self.items.iloc[self.item_counter, 1:4]), [round(value, 5) for value in self.spr_reaction_times.values()]]
+            out_l = out_l + [round(value, 5)
+                             for value in self.spr_reaction_times.values()]
         # judgments
         else:
-            # set up all the info that should be written to the file (in that order)
-            out_l = [[self.id_string], [self.today], [self.start_time], [self.config_dict["tester"]], self.meta_entries_final, list(self.items.iloc[self.item_counter, 1:4]), [
-                self.judgment.get()], [str(round(reaction_time, 5))]]
-            # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
+            out_l = out_l + [self.judgment.get(), str(round(reaction_time, 5))]
+        # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
         out_l = [str(item).casefold()
-                 for sublist in out_l for item in sublist]
+                 for item in flatten(out_l)]
         self.outdf.loc[len(self.outdf)] = out_l
 
     def next_self_paced_reading_item(self):
@@ -1029,8 +1038,8 @@ class Experiment(Window):
             self.word_index = 0
             self.item_text.config(text=self.create_masked_item())
         # otherwise either go to the feedback section or enter the critical stage of the exp
-        except IndexError:
-            self.logger.exception("No more items to show.")
+        except IndexError as e:
+            self.logger.exception(f"No more items to show: {e}")
             self.item_list_over_spr()
 
     def next_text_item(self):
@@ -1088,11 +1097,11 @@ class Experiment(Window):
         try:
             df_feedback = self.read_multi_ext(
                 feedback_file, self.config_dict["results_file_extension"])
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             df_feedback = pd.DataFrame(
                 columns=["id", "duration_minutes", "part_no", "feedback"])
             self.logger.exception(
-                f"No feedback file '{feedback_file}' found, creating one instead.")
+                f"No feedback file '{feedback_file}' found, creating one instead: {e}")
         # add the new row of the current participant and save the file
         df_feedback.loc[len(df_feedback)] = out_l
         self.save_multi_ext(df_feedback, feedback_file,
