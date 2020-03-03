@@ -19,7 +19,7 @@ logo = "media/logo.png"
 
 # meta data
 meta_instruction = "Please fill out all the fields below:"
-meta_fields = 'Age', 'Gender', 'Language', "Major"
+meta_fields = ['Age', 'Gender', 'Language', "Major"]
 
 # exposition
 expo_text = '''Liebe/r Teilnehmer/In,\n\nim Folgenden werden wir Ihnen einige Sätze des Deutschen zeigen. Wir möchten Sie bitten, diese aufmerksam durchzulesen und im Anschluss in eine von vier verschiedenen Kategorien einzuordnen. Dabei wird es darum gehen, die im Satz präsentierte Handlung mithilfe der vier Auswahlmöglichkeiten genauer zu beschreiben.\n\n\nViel Spaß und herzlichen Dank für Ihre Teilnahme!'''
