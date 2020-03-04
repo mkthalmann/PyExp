@@ -57,6 +57,8 @@ dynamic_img = False
 # if using non-direct google drive links (obtained via export settings), set this to true to convert it to a usable one
 # for links obtained by highlighting multiple files, right-clicking on them and then clicking "Share"
 google_drive_link = False
+# additional button that will be shown in addition to the dynamic options, generally a rejection option, leave as "" to disable
+non_dynamic_button = ""
 
 # disable both the submit and likert scale buttons for a number of seconds to encourage people to actually read the item (0 to disable)
 # this will not feature in the reaction times of course

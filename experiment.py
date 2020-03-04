@@ -25,7 +25,6 @@ from urllib.request import urlopen  # linked files
 
 import pandas as pd
 import pygame  # audio
-from pandas.core.common import flatten
 from PIL import Image, ImageTk
 
 
@@ -34,7 +33,6 @@ from PIL import Image, ImageTk
     - support for video stimuli
     - option to have several experimental blocks with a break inbetween
     - for self-paced reading, add control questions
-    - for dynamic FC images, add REJECT option
 
     FIXME:
     - 
@@ -87,7 +85,7 @@ class Experiment(Window):
     """Main class for the experiment. Relies on python file upon instantiation with the settings to be used."""
 
     # class attribute: core values which need to stay the same over the course of one set of participants
-    config_core = ["experiment_title", "meta_fields", "warm_up",
+    config_core = ["experiment_title", "meta_fields", "warm_up", 'non_dynamic_button',
                    "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols']
 
     def __init__(self, config):
@@ -295,8 +293,8 @@ class Experiment(Window):
             df_items = df_items.sample(frac=1).reset_index(drop=True)
 
         # rearrange the columns of the data frame using the entries in item_file_columns
-        columns_to_order = flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'], self.config_dict['item_number_col'],
-                                    self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
+        columns_to_order = pd.core.common.flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'], self.config_dict['item_number_col'],
+                                                   self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
         try:
             df_items = df_items[columns_to_order]
         except KeyError as e:
@@ -438,14 +436,14 @@ class Experiment(Window):
 
     def check_config(self):
         """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
-        compare_config = ['fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc',
-                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize']
+        compare_config = {'fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button',
+                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
         # compare the two
-        if compare_config == list(self.config_dict.keys()):
+        if compare_config == set(self.config_dict.keys()):
             return True
         else:
-            self.logger.warning(f"These entries are either missing from {self.config} or have been added to it:\n" + str(list(set(compare_config)
-                                                                                                                              ^ set(list(self.config_dict.keys())))))
+            self.logger.warning(f"These entries are either missing from {self.config} or have been added to it:\n" + str(set(compare_config)
+                                                                                                                         ^ set(self.config_dict.keys())))
             return False
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
@@ -519,7 +517,7 @@ class Experiment(Window):
             header_list = header_list + [self.items.iloc[0, 0].split()]
         # flatten the list of lists, remove capitalization and spaces and initialize pandas object
         header_list = [item.casefold().replace(" ", "_")
-                       for item in flatten(header_list)]
+                       for item in pd.core.common.flatten(header_list)]
         self.outdf = pd.DataFrame(columns=header_list)
 
     def resize_image(self, x, desired_width=250):
@@ -767,7 +765,7 @@ class Experiment(Window):
 
     ''' SECTION IV: Buttons '''
 
-    def text_or_image_button(self, value, text=None, image=None, side="left"):
+    def text_or_image_button(self, value, text=None, image=None, side="left", likert_append=True):
         """Display a button in the judgment frame, either with text or images.
 
         Arguments:
@@ -780,9 +778,10 @@ class Experiment(Window):
         """
         x = Radiobutton(self.frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
             self.config_dict["font"], self.config_dict["basesize"]))
-        self.likert_list.append(x)
         x.pack(side=side, expand=True, padx=10)
-        x.config(state="disabled")
+        if likert_append:
+            self.likert_list.append(x)
+            x.config(state="disabled")
 
     def judgment_buttons(self):
         """Display the likert, FC buttons or images used to give linguistic judgments."""
@@ -836,6 +835,10 @@ class Experiment(Window):
                 self.fc_images[x] = self.resize_image(x)
                 self.text_or_image_button(value=str(name).casefold().replace(
                     " ", "_"), image=self.fc_images[x], side=random.choice(["left", "right"]))
+
+        if self.config_dict["non_dynamic_button"]:
+            self.text_or_image_button(
+                text=self.config_dict["non_dynamic_button"], value=self.config_dict["non_dynamic_button"].casefold().replace(" ", "_"), likert_append=False, side="right")
 
     def submit_button(self, continue_func, text=None):
         """Display a submit button that takes different continuation functions.
@@ -1019,7 +1022,7 @@ class Experiment(Window):
             out_l = out_l + [self.judgment.get(), str(round(reaction_time, 5))]
         # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
         out_l = [str(item).casefold()
-                 for item in flatten(out_l)]
+                 for item in pd.core.common.flatten(out_l)]
         self.outdf.loc[len(self.outdf)] = out_l
 
     def next_self_paced_reading_item(self):
