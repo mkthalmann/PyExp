@@ -11,9 +11,18 @@ This is one of my ongoing side projects: an experiment script with Python 3 usin
   * self-paced-reading (either cumulative or static)
 * ability to choose between the various paradigms and to specify the way the experiment is to be run (e.g., with or without a training portion) and what kind of data is to be collected (e.g., different meta-data fields)
 
+## What It Looks Like
+
+![meta](media/sample.jpg)
+
 ## Getting Started
 
-To run the experiment, simply adjust the settings in `config.py` and add your item files to the mix before running `experiment.py`. The experiment should then run as specified (barring any code blunders on my part). Alternatively, if you just want to have a look at the way everything works and looks, you can simply run it as-is; a wide variety of exemplary item lists and items is provided (and used for testing purposes).
+To run the experiment, simply adjust the settings in `config.py` (or any other python file of your choosing with the relevant settings) and add your item files to the mix before running `experiment.py`. The experiment should then run as specified (barring any code blunders on my part). Alternatively, if you just want to have a look at the way everything works and looks, you can simply run it as-is; a wide variety of exemplary item lists and items is provided (and used for testing purposes).
+
+```python
+my_exp = Experiment("config.py")
+my_exp.start_experiment()
+```
 
 **ADD**:
 
@@ -24,12 +33,12 @@ To run the experiment, simply adjust the settings in `config.py` and add your it
 
 In order to display the experiment, tkinter is used (unfortunately, so far, I have only tested this script on Mac OS, but I do hope that this should not be a problem), internal data handling and exporting is accomplished with pandas, while anything relating to audio files relies on pygame.
 
-Here are the first few lines of the results for a Forced Choice experiment, where the `finished` column indicates whether the entire set of items was completed:
+Here are the first few lines of the results for a Forced Choice experiment, where the `finished`-column indicates whether the entire set of items was completed:
 
 | id              | date       | start_time | tester | age | gender | language | major | sub_exp | item | cond | judgment | reaction_time | finished |
 | --------------- | ---------- | ---------- | ------ | --- | ------ | -------- | ----- | ------- | ---- | ---- | -------- | ------------- | -------- |
 | uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 1    | a    | opt1     | 1.48082       | F        |
-| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 3    | b    | opt2     | 0.9502        | F        |
+| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 3    | b    | reject   | 0.9502        | F        |
 | uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 2    | a    | opt2     | 0.88746       | F        |
 | uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 1    | b    | opt1     | 1.14362       | F        |
 
