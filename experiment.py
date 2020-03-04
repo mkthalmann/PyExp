@@ -460,7 +460,7 @@ class Experiment(Window):
             self.read_and_check_housekeeping_files()
         except FileNotFoundError as e:
             self.create_housekeeping_files()
-            self.logger.exception(
+            self.logger.info(
                 f"Housekeeping file '{self.part_and_list_file}' not found, creating one instead: {e}")
         # assign participant to an item list (using the modulo method for latin square)
         self.item_list_no = self.participant_number % self.config_dict["item_lists"] + 1
@@ -552,10 +552,10 @@ class Experiment(Window):
             self.logger.info(f"File deleted: {file}")
         except PermissionError as e:
             shutil.rmtree(file)
-            self.logger.exception(
+            self.logger.info(
                 f"Directory and all contained files deleted: {file}")
         except FileNotFoundError as e:
-            self.logger.exception(f"File does not exist: {file}; {e}")
+            self.logger.warning(f"File does not exist: {file}; {e}")
 
     def delete_all_results(self):
         """Delete both the results directory (including configuration json and feedback file) as well as the participants housekeeping file."""
@@ -579,7 +579,7 @@ class Experiment(Window):
             results_files.remove(os.path.join(
                 files_dir, f'FEEDBACK{self.config_dict["results_file_extension"]}'))
         except ValueError as e:
-            self.logger.exception(f"Feedback file not in file list: {e}")
+            self.logger.info(f"Feedback file not in file list: {e}")
         # print out which files were found as well as their size
         self.logger.info(f'Found {len(results_files)} results files:')
         for file in results_files:
@@ -980,7 +980,7 @@ class Experiment(Window):
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError as e:
-            self.logger.exception(f"No more items to show: {e}")
+            self.logger.info(f"No more items to show: {e}")
             self.item_list_over()
 
     def item_list_over(self):
@@ -1042,7 +1042,7 @@ class Experiment(Window):
             self.item_text.config(text=self.create_masked_item())
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError as e:
-            self.logger.exception(f"No more items to show: {e}")
+            self.logger.info(f"No more items to show: {e}")
             self.item_list_over_spr()
 
     def next_text_item(self):
@@ -1103,7 +1103,7 @@ class Experiment(Window):
         except FileNotFoundError as e:
             df_feedback = pd.DataFrame(
                 columns=["id", "duration_minutes", "part_no", "feedback"])
-            self.logger.exception(
+            self.logger.info(
                 f"No feedback file '{feedback_file}' found, creating one instead: {e}")
         # add the new row of the current participant and save the file
         df_feedback.loc[len(df_feedback)] = out_l
