@@ -362,9 +362,13 @@ class Experiment(Window):
         return " ".join(masked_split)
 
     def display_feedback(self):
-        """Display instructions and entry field for feedback after the critical section."""
+        """Save, the results, display instructions and entry field for feedback after the critical section."""
         # end the critical portion
         self.phases["critical"] = False
+        self.outdf['finished'] = "T"
+        self.save_multi_ext(self.outdf, self.outfile,
+                            self.config_dict["results_file_extension"])
+        self.logger.info(f"Results file saved: {self.outfile}")
 
         # unless the feedback text is empty, show a frame to allow feedback entry
         if not self.config_dict["feedback"]:
@@ -395,8 +399,6 @@ class Experiment(Window):
         self.display_long(self.config_dict["bye_message"], 10)
         self.phases["finished"] = True
         self.logger.info("Experiment has finished.")
-        self.save_multi_ext(self.outdf, self.outfile,
-                            self.config_dict["results_file_extension"])
         self.submit_button(self.on_closing, "Exit")
         print(self.outdf)
 
@@ -540,10 +542,11 @@ class Experiment(Window):
             self.logger.info(
                 "Participant will not be counted towards the amount of people to be tested.")
         else:
-            self.logger.info(
-                "Results file will not be deleted and the participant will count towards the specified amount.")
+            self.outdf['finished'] = 'F'
             self.save_multi_ext(self.outdf, self.outfile,
                                 self.config_dict["results_file_extension"])
+            self.logger.info(
+                f"Results file will not be deleted and the participant will count towards the specified amount. Saved file: {self.outfile}")
 
     def delete_file(self, file):
         """Delete files or directories."""
