@@ -24,6 +24,15 @@ To run the experiment, simply adjust the settings in `config.py` and add your it
 
 In order to display the experiment, tkinter is used (unfortunately, so far, I have only tested this script on Mac OS, but I do hope that this should not be a problem), internal data handling and exporting is accomplished with pandas, while anything relating to audio files relies on pygame.
 
+Here are the first few lines of the results for a Forced Choice experiment, where the `finished` column indicates whether the entire set of items was completed:
+
+| id              | date       | start_time | tester | age | gender | language | major | sub_exp | item | cond | judgment | reaction_time | finished |
+| --------------- | ---------- | ---------- | ------ | --- | ------ | -------- | ----- | ------- | ---- | ---- | -------- | ------------- | -------- |
+| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 1    | a    | opt1     | 1.48082       | F        |
+| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 3    | b    | opt2     | 0.9502        | F        |
+| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 2    | a    | opt2     | 0.88746       | F        |
+| uuvvomdbmam9fzc | 04/03/2020 | 11:46:54   | TEST   | 99  | n/a    | python   | none  | 1       | 1    | b    | opt1     | 1.14362       | F        |
+
 ## Desiderata
 
 Below is a list of features I would like to implement in the future. While it is no guarantee that this will actually happen, the following list is supposed to hold me (somewhat) accountable.
