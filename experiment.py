@@ -32,7 +32,6 @@ from PIL import Image, ImageTk
     TODO:
     - support for video stimuli
     - option to have several experimental blocks with a break inbetween
-    - for self-paced reading, add control questions
 
     FIXME:
     -
