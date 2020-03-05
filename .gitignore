@@ -13,3 +13,4 @@ __pycache__
 .DS_Store
 convert.py
 *.log
+.DS_Store
