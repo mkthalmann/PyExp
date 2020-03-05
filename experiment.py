@@ -35,7 +35,7 @@ from PIL import Image, ImageTk
     - for self-paced reading, add control questions
 
     FIXME:
-    - 
+    -
 '''
 
 
@@ -85,8 +85,9 @@ class Experiment(Window):
     """Main class for the experiment. Relies on python file upon instantiation with the settings to be used."""
 
     # class attribute: core values which need to stay the same over the course of one set of participants
-    config_core = ["experiment_title", "meta_fields", "warm_up", 'non_dynamic_button',
-                   "warm_up_file", "use_text_stimuli", "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols']
+    config_core = ["experiment_title", "meta_fields", "warm_up", 'non_dynamic_button', "warm_up_file", "use_text_stimuli",
+                   "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col',
+                   'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols']
 
     def __init__(self, config):
         """Initialie the experiment class and start up the tkinter GUI.
@@ -293,8 +294,8 @@ class Experiment(Window):
             df_items = df_items.sample(frac=1).reset_index(drop=True)
 
         # rearrange the columns of the data frame using the entries in item_file_columns
-        columns_to_order = pd.core.common.flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'], self.config_dict['item_number_col'],
-                                                   self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
+        columns_to_order = pd.core.common.flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'],
+                                                   self.config_dict['item_number_col'], self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
         try:
             df_items = df_items[columns_to_order]
         except KeyError as e:
@@ -335,9 +336,6 @@ class Experiment(Window):
         # press the space bar to show next word
         self.root.bind('<space>', self.next_word)
 
-        # start the reaction times
-        self.time_start = time.time()
-
     def create_masked_item(self):
         """Take item and mask letters and words with underscores, depending on word counter."""
         # replace all non-whitespace characters with underscores
@@ -359,6 +357,10 @@ class Experiment(Window):
             else:
                 masked_split[self.word_index - 1] = self.items.iloc[self.item_counter, 0].split()[
                     self.word_index - 1]
+
+        # start the reaction times
+        self.time_start = time.time()
+
         return " ".join(masked_split)
 
     def display_feedback(self):
@@ -438,14 +440,22 @@ class Experiment(Window):
 
     def check_config(self):
         """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
-        compare_config = {'fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button',
-                          'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
+        compare_config = {'fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion',
+                          'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title',
+                          'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description',
+                          'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button', 'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants',
+                          'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col',
+                          'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback',
+                          'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font',
+                          'font_mono', 'basesize'}
         # compare the two
         if compare_config == set(self.config_dict.keys()):
+            self.logger.info(
+                f"Configuration file {self.config} passed the completeness check.")
             return True
         else:
-            self.logger.warning(f"These entries are either missing from {self.config} or have been added to it:\n" + str(set(compare_config)
-                                                                                                                         ^ set(self.config_dict.keys())))
+            self.logger.warning(
+                f"These entries are either missing from {self.config} or have been added to it: {compare_config^set(self.config_dict.keys())}")
             return False
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
@@ -486,11 +496,12 @@ class Experiment(Window):
             self.display_long(
                 f"The configurations for the currently running experiment have changed from previous participants.\nCheck '{self.config}' or start a new experiment (e.g. by changing the experiment title) to proceed.")
             self.logger.warning(
-                f"Config dict: { {k: self.config_dict[k] for k in self.config_core} }")
-            self.logger.warning(
-                f"Compare dict: { {k: compare_config[k] for k in self.config_core} }")
+                f"Config dict: { {k: self.config_dict[k] for k in self.config_core} }\nCompare dict: { {k: compare_config[k] for k in self.config_core} }")
             self.submit_button(self.root.destroy, "Exit")
             self.phases["problem"] = True
+        else:
+            self.logger.info(
+                f"Configuration check passed. Core settings in {self.config} have not been modified from previous participants.")
         if self.participant_number == self.config_dict["participants"]:
             self.experiment_finished()
 
@@ -531,7 +542,7 @@ class Experiment(Window):
         image = image.resize(new_dimensions, Image.ANTIALIAS)
         return ImageTk.PhotoImage(image)
 
-    def delete_unfinished_participant(self):
+    def unfinished_participant_results(self):
         """Depending on user settings, delete or keep data from experiment runs that were ended before the intended stopping point."""
         # if specified by user, do not save unfinished participant results (according to the given ratio)
         if self.config_dict["remove_unfinished"] and self.item_counter < len(self.items) * self.config_dict["remove_ratio"]:
@@ -610,7 +621,7 @@ class Experiment(Window):
         Returns:
             df -- pandas DataFrame
         """
-        if extension == None:
+        if extension is None:
             _, extension = os.path.splitext(file)
         if extension == ".csv":
             df = pd.read_csv(file, sep=";")
@@ -630,7 +641,7 @@ class Experiment(Window):
         Keyword Arguments:
             extension {str} -- Extension of the file; inferred if None (default: {None})
         """
-        if extension == None:
+        if extension is None:
             _, extension = os.path.splitext(file)
         if extension == ".csv":
             df.to_csv(file, sep=';', index=False)
@@ -852,10 +863,12 @@ class Experiment(Window):
         Keyword Arguments:
             text {str} -- Text to be displayed on the button; if None, value will be taken from the config file (default: {None})
         """
-        if text == None:
+        # if no other text argument is passed, use the text in the configuration file
+        if text is None:
             text = self.config_dict["button_text"]
         self.display_line()
 
+        # frame and button with text for the submit button
         frame_submit = Frame(self.root)
         frame_submit.pack(expand=False, fill="both", side="top", pady=10)
         self.submit = Button(frame_submit, text=text, fg="blue", font=(self.config_dict["font"], self.config_dict["basesize"] - 10), padx=10, pady=5,
@@ -916,34 +929,23 @@ class Experiment(Window):
         self.start_warm_up_phase(
         ) if self.config_dict["warm_up"] else self.start_critical_phase()
 
-    def next_word(self):
+    def next_word(self, event=None):
         """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary."""
-        # no need to record the reaction time for first button press. that's before anything is shown
-        if self.word_index == 0:
-            # go to next word
-            self.word_index += 1
-            self.item_text.config(text=self.create_masked_item())
-            # start reaction times
-            self.time_start = time.time()
-        # if the word is in the middle of the item, take the reaction times and reveal the next one
-        elif 0 < self.word_index < len(self.items.iloc[self.item_counter, 0].split()):
+        # NOTE: the event argument is just there to catch the event argument passed down by the button press
+        # if the word is in the middle of the item, take the reaction times
+        if 0 < self.word_index <= len(self.items.iloc[self.item_counter, 0].split()):
             # reaction times
             self.spr_reaction_times[self.word_index] = time.time(
             ) - self.time_start
-
-            # reset reaction times and go to next word
-            self.word_index += 1
-            self.item_text.config(text=self.create_masked_item())
-            self.time_start = time.time()
         # if all words have been shown, activate the continue button
-        elif self.word_index == len(self.items.iloc[self.item_counter, 0].split()):
-            # record final reaction time and store it
-            self.spr_reaction_times[self.word_index] = time.time(
-            ) - self.time_start
-
+        if self.word_index == len(self.items.iloc[self.item_counter, 0].split()):
             # re-mask the item text so that participants cant just read the entire item at the end (especially important in the cumulative version)
             self.item_text.config(text=self.masked)
             self.enable_submit()
+        # if there are more words, increase word index, unmask next word and record button press time
+        else:
+            self.word_index += 1
+            self.item_text.config(text=self.create_masked_item())
 
     def submit_judgment(self):
         """Submit the judgment (likert, FC, image) as well as the reaction times and continue to next item. If at the end of the item list, move on to critical section (if currently in warm-up) or feedback section."""
@@ -1140,7 +1142,7 @@ class Experiment(Window):
             if self.phases["critical"] and not self.phases["finished"]:
                 self.logger.warning(
                     "IMPORTANT!: Experiment was quit manually.")
-                self.delete_unfinished_participant()
+                self.unfinished_participant_results()
                 self.save_feedback()
             else:
                 self.logger.info(
