@@ -87,7 +87,7 @@ class Experiment(Window):
     # class attribute: core values which need to stay the same over the course of one set of participants
     config_core = ["experiment_title", "meta_fields", "warm_up", 'non_dynamic_button', "warm_up_file", "use_text_stimuli",
                    "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col',
-                   'item_or_file_col', 'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols']
+                   'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options"]
 
     def __init__(self, config):
         """Initialie the experiment class and start up the tkinter GUI.
@@ -295,7 +295,7 @@ class Experiment(Window):
 
         # rearrange the columns of the data frame using the entries in item_file_columns
         columns_to_order = pd.core.common.flatten([self.config_dict['item_or_file_col'], self.config_dict['sub_exp_col'],
-                                                   self.config_dict['item_number_col'], self.config_dict['cond_col'], self.config_dict['dynamic_txt_or_img_cols']])
+                                                   self.config_dict['item_number_col'], self.config_dict['cond_col'], self.config_dict['extra_cols']])
         try:
             df_items = df_items[columns_to_order]
         except KeyError as e:
@@ -331,7 +331,7 @@ class Experiment(Window):
         self.item_text = Label(frame_item, font=(
             self.config_dict["font_mono"], self.config_dict["basesize"] + 8), text=self.create_masked_item(), height=9, wraplength=1000)
         self.item_text.pack()
-        self.submit_button(self.next_self_paced_reading_item)
+        self.submit_button(self.display_control_questions)
 
         # press the space bar to show next word
         self.root.bind('<space>', self.next_word)
@@ -445,7 +445,7 @@ class Experiment(Window):
                           'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description',
                           'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button', 'dynamic_img', 'google_drive_link', 'delay_judgment', 'participants',
                           'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col',
-                          'sub_exp_col', 'cond_col', 'dynamic_txt_or_img_cols', 'items_randomize', 'results_file', 'results_file_extension', 'feedback',
+                          'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options", 'items_randomize', 'results_file', 'results_file_extension', 'feedback',
                           'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font',
                           'font_mono', 'basesize'}
         # compare the two
@@ -527,7 +527,8 @@ class Experiment(Window):
             header_list = header_list + ["judgment", "reaction_time"]
         else:
             # add a column for each word in the item (of the first item)
-            header_list = header_list + [self.items.iloc[0, 0].split()]
+            header_list = header_list + \
+                [self.items.iloc[0, 0].split(), "control"]
         # flatten the list of lists, remove capitalization and spaces and initialize pandas object
         header_list = [item.casefold().replace(" ", "_")
                        for item in pd.core.common.flatten(header_list)]
@@ -947,12 +948,35 @@ class Experiment(Window):
             self.word_index += 1
             self.item_text.config(text=self.create_masked_item())
 
+    def display_control_questions(self):
+        """Display the control questions for self-paced reading items, including FC options and a submit button."""
+        self.empty_window()
+        self.display_spacer_frame()
+        self.display_long(self.items.iloc[self.item_counter, 4])
+        self.frame_judg = Frame(self.root, relief="sunken", bd=2)
+        self.frame_judg.pack(side="top", pady=20)
+
+        for x in self.config_dict['spr_control_options']:
+            self.text_or_image_button(text=str(x), value=str(
+                x).casefold().replace(" ", "_"), likert_append=False)
+        self.submit_button(self.submit_control)
+        self.submit.config(state="normal")
+
+    def submit_control(self):
+        """Submit the judgment for self-paced reading control questions and move to the next item afterwards (if a choice was made)."""
+        if not self.judgment.get():
+            self.display_error(self.config_dict["error_judgment"])
+        else:
+            self.logger.info(
+                f"Done with control question {self.item_counter + 1}/{len(self.items)}!")
+            self.next_self_paced_reading_item()
+
     def submit_judgment(self):
         """Submit the judgment (likert, FC, image) as well as the reaction times and continue to next item. If at the end of the item list, move on to critical section (if currently in warm-up) or feedback section."""
         # if no selection was made using the radio buttons, display error
         if not self.judgment.get():
             self.display_error(self.config_dict["error_judgment"])
-        elif self.judgment.get():
+        else:
             # reaction times: subtract start time from stop time to get reaction times
             if self.config_dict["use_text_stimuli"]:
                 reaction_time = time.time() - self.time_start - \
@@ -1021,7 +1045,7 @@ class Experiment(Window):
         # reaction times for all words
         if self.config_dict["self_paced_reading"]:
             out_l = out_l + [round(value, 5)
-                             for value in self.spr_reaction_times.values()]
+                             for value in self.spr_reaction_times.values()] + [self.judgment.get()]
         # judgments
         else:
             out_l = out_l + [self.judgment.get(), str(round(reaction_time, 5))]
@@ -1031,7 +1055,7 @@ class Experiment(Window):
         self.outdf.loc[len(self.outdf)] = out_l
 
     def next_self_paced_reading_item(self):
-        """Record reaction times in outdf in self-paced-reading ecperiments and shows the next item. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
+        """Shows the next item in self-paced reading experiment, calls functions to save reaction times and judgments. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
         self.logger.info(
             f"Done with item {self.item_counter + 1}/{len(self.items)}!")
 
@@ -1044,7 +1068,12 @@ class Experiment(Window):
             self.spr_reaction_times = {}
             # run masking on new item and reset the word index
             self.word_index = 0
-            self.item_text.config(text=self.create_masked_item())
+            # reset the control judgment
+            self.judgment.set("")
+            # and go back to the masked item frame
+            self.empty_window()
+            self.display_spacer_frame()
+            self.display_masked_item()
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError as e:
             self.logger.info(f"No more items to show: {e}")
