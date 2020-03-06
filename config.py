@@ -84,7 +84,7 @@ item_number_col = "item_number"
 item_or_file_col = "item"
 sub_exp_col = "sub_exp"
 cond_col = "condition"
-# either the a non-dynamic option for FC or a control question in self-paced reading; leave empty if none
+# names of the FC answer options or a control question in self-paced reading; leave empty if none
 extra_cols = ["opt1", "opt2"]
 # buttons (and values in the results) for the control questions in self-paced reading
 spr_control_options = ["yes", "no"]
