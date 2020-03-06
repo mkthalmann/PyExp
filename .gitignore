@@ -8,6 +8,7 @@ movies_tk.py
 *_results_full.csv
 *_results
 .pre_pandas
+maintainability
 .vscode
 __pycache__
 .DS_Store
