@@ -80,6 +80,7 @@ item_file = "items/complete_dynamic"
 item_file_extension = ".xlsx"  # .csv; .txt; .xlsx
 
 # column names in item file
+# column that are not mentioned here will not feature in the experiment
 item_number_col = "item_number"
 item_or_file_col = "item"
 sub_exp_col = "sub_exp"
