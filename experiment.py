@@ -10,7 +10,6 @@ import re  # regular expressions
 import shutil
 import smtplib
 import ssl
-import statistics
 import string  # participant id
 import time
 from email import encoders
@@ -18,7 +17,6 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from io import BytesIO  # linked files
-from itertools import cycle
 from threading import Timer
 from tkinter import *
 from tkinter import messagebox
@@ -27,7 +25,6 @@ from urllib.request import urlopen  # linked files
 import pandas as pd
 import pygame  # audio
 from PIL import Image, ImageTk
-from plotnine import *
 
 
 '''
@@ -95,7 +92,7 @@ class Experiment(Window):
                    'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options"]
 
     def __init__(self, config, window=True):
-        """Initialie the experiment class and start up the tkinter GUI.
+        """Initialie the experiment class and optionally start up the tkinter GUI. A variety of checks will be performed on the config argument script.
 
         Arguments:
             config {str} -- Python script name that contains the experiment's configuration parameters.
@@ -117,6 +114,8 @@ class Experiment(Window):
         self.config_file = os.path.join(self.dir, "config.json")
         # default participant number
         self.part_num = 0
+        # phase checker dict; for critical phase and problems with settings
+        self.phases = dict.fromkeys(["critical", "problem"], False)
         # check that all settings are present
         self.check_config()
         # assign the item list (for the critical items)
@@ -139,17 +138,20 @@ class Experiment(Window):
             # add title, geometry, centering etc
             self.setup_gui()
             # get the logo file and resize it
+            # FIXME: this should actually resize to desired height, not desired width
             self.logo = self.resize_image(self.config["logo"], 100)
 
         # time of testing
         self.exp_start = time.time()  # track eperiment duration
         self.start_time = datetime.datetime.now().strftime("%H:%M:%S")
 
-        # phase checker dict; for critical phase and problems with settings
-        self.phases = dict.fromkeys(
-            ["critical", "problem"], False)
-
     def __str__(self):
+        """Return the core settings of the experiment, namely those which have to stay the same over subsequent participants
+
+        Returns:
+            str -- Description of the experiment
+        """
+        # only show the most important settings (the ones in the class attribute)
         core_dict = {k: self.config[k] for k in self.config_core}
         return f"Experiment with the following core settings: {core_dict}"
 
@@ -181,12 +183,17 @@ class Experiment(Window):
         self.submit_button(self.exit_exposition)
 
     def start_item_phase(self, critical=True):
-        """Initialize the critical/warm-up section of the experiment."""
+        """Initialize the critical/warm-up section of the experiment.
+
+        Keyword Arguments:
+            critical {bool} -- Whether to cycle through the critical items or the warm-up items (default: {True})
+        """
         # needs to be instantiated now, because we will use it even if exp is not getting finished
         self.feedback = StringVar()
+        self.logger.info(
+            f"Starting {'critical' if critical else 'warm-up'} phase.")
         # assign different item lists depending on the phase of the experiment
         if critical:
-            self.logger.info("Starting critical phase.")
             self.phases["critical"] = True
             self.items = self.items_critical
             self.display_short(self.config["title"], 5)
@@ -194,7 +201,6 @@ class Experiment(Window):
             # only update the participant number in the critical section
             self.housekeeping_file_update()
         else:
-            self.logger.info("Starting warm-up phase.")
             self.items = self.items_warm_up
             self.display_short(self.config["warm_up_title"], 5)
             self.display_short(self.config["warm_up_description"])
@@ -205,14 +211,17 @@ class Experiment(Window):
         # judgment variable filled with GUI interaction
         self.judgment = StringVar()
         # index to iterate through items
-        self.item_num = 0
+        self.i_ix = 0
+        # intitialize self-paced reading exp
         if self.config["self_paced_reading"]:
             # index to iterate through words
-            self.word_index = 0
+            self.w_ix = 0
+            # dict for the reaction times
             self.spr_reaction_times = {}
+            # storage for the fully masked item
             self.masked = ""
             self.display_masked_item()
-            self.submit.config(state="disabled")
+        # init other kinds of experiments
         else:
             if self.config["use_text_stimuli"]:
                 self.display_text_item()
@@ -221,11 +230,14 @@ class Experiment(Window):
                 self.playimage = self.resize_image(
                     os.path.join("media", "play.png"), 100)
                 self.display_audio_stimulus()
+            # stores the buttons (necessary to resolve the judgment value later)
             self.likert_list = []
-            self.fc_images = {}  # for dynamic FC with images
+            # stores images in dynamic FC exps
+            self.fc_images = {}
             self.judgment_buttons()
             self.submit_button(self.submit_judgment)
-            self.submit.config(state="disabled")
+        # disable the submit button (will be reactivated on condition)
+        self.submit.config(state="disabled")
         # start reaction timer
         self.time_start = time.time()
 
@@ -244,7 +256,9 @@ class Experiment(Window):
 
     def setup_gui(self):
         """Generate the window title and perform some general setups."""
+        # set the title to the one specified in the config file
         self.root.wm_title(self.config["window_title"])
+        # same with the geometry
         self.root.geometry(self.config["geometry"])
         # either go into fullscreen or center window, depending on setting
         self.fullscreen(
@@ -253,7 +267,18 @@ class Experiment(Window):
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def display_short(self, text, size_mod=0, side="top"):
-        """Display a short message without word wrap enabled. Returns the frame"""
+        """Display a short message without word wrap enabled. Returns the frame that contains the label
+
+        Arguments:
+            text {str} -- Text to display; if empty, nothing will happen
+
+        Keyword Arguments:
+            size_mod {int} -- Increase or decrease the basesize in the experiment settings (default: {0})
+            side {str} -- Where to pack the resulting frame and label in the root window (default: {"top"})
+
+        Returns:
+            frame -- Frame containing the text so that other elements can be added to that same frame
+        """
         # only instantiate frame and label if there's actually text to display
         if text:
             frame = Frame(self.root)
@@ -264,7 +289,19 @@ class Experiment(Window):
             return frame
 
     def display_long(self, text, size_mod=0, height=10, font='font'):
-        """Display a long message with word wrap enabled."""
+        """Display a long message with word wrap enabled.
+
+        Arguments:
+            text {str} -- Text to display; if empty, nothing will happen
+
+        Keyword Arguments:
+            size_mod {int} -- Increase or decrease the basesize in the experiment settings (default: {0})
+            height {int} -- Height of the label element (decrease for shorter texts) (default: {10})
+            font {str} -- Which font to use from the experimental settings; either 'font' or 'font_mono' (default: {'font'})
+
+        Returns:
+            label -- Returns the label to that it can be accessed via tkinter's get() method
+        """
         # only instantiate frame and label if there's actually text to display
         if text:
             frame = Frame(self.root)
@@ -295,8 +332,7 @@ class Experiment(Window):
 
     def display_text_item(self):
         """Display frame and label for text items."""
-        self.item_text = self.display_long(
-            text=self.items.iloc[0, self.item_num], size_mod=7, height=6)
+        self.item_text = self.display_long(self.items.iloc[0, self.i_ix], 7, 6)
 
     def display_audio_stimulus(self):
         """Display frame, label, and play button for audio items."""
@@ -316,7 +352,7 @@ class Experiment(Window):
         # submit button which shows the control question
         self.submit_button(self.display_control_questions)
 
-        # NOTE: something is wrong: sometimes when you press the spacebar shortly after the exposition, you get taken back to the expo section
+        # NOTE: sometimes when you press the spacebar shortly after the exposition, you get taken back there
         # a delay helps
         time.sleep(.1)
         # press the space bar to show next word
@@ -326,7 +362,7 @@ class Experiment(Window):
         """Display the control questions for self-paced reading items, including FC options and a submit button."""
         # empty window, display logo etc and show the control questions from the item file
         self.empty_window()
-        self.display_long(self.items.iloc[self.item_num, 4])
+        self.display_long(self.items.iloc[self.i_ix, 4])
 
         # place the judgment buttons, taking the text from the config file
         self.frame_judg = Frame(self.root, relief="sunken", bd=2)
@@ -359,9 +395,8 @@ class Experiment(Window):
         """Show goodbye message and exit button."""
         self.empty_window()
         self.display_long(self.config["bye_message"], 10, 7)
-        self.logger.info("Experiment has finished.")
         self.submit_button(self.on_closing, "Exit")
-        print(self.outdf)
+        self.logger.info("Experiment has finished.")
 
     def display_spacer_frame(self):
         """Display frame with logo and line that appears at the top of every stage of the experiment."""
@@ -370,15 +405,16 @@ class Experiment(Window):
         # label with logo instead of text
         spacer_img = Label(spacer_frame, image=self.logo)
         spacer_img.pack(fill="x")
-        self.display_line()
-
-    def display_line(self):
-        """Display a horizontal line."""
+        # also display a line
         spacer_line = Frame(self.root, height=2, width=800, bg="gray90")
         spacer_line.pack(side="top", anchor="c", pady=20)
 
     def display_error(self, text):
-        """Frame and label for error messages that appear if entry fields are blank. Disappears after a delay."""
+        """Frame and label for error messages that appear if entry fields are blank. Disappears after a delay.
+
+        Arguments:
+            text {str} -- Text to display as error message
+        """
         error_label = Label(self.root, font=(
             self.config["font"], self.config["basesize"] - 8), text=text, fg="red")
         error_label.pack(side="top", pady=10)
@@ -387,7 +423,14 @@ class Experiment(Window):
     ''' SECTION III: file management methods '''
 
     def get_config_dict(self, config):
-        """Import the configuration file (python script) by removing all comments and then return it as a dictionary."""
+        """Import the configuration file (python script) by removing all comments and then return it as a dictionary.
+
+        Arguments:
+            config {str} -- File name of the python script containing the settings for the experiment
+
+        Returns:
+            dict -- Dictionary with the experimental parameters (key) and their settings (value)
+        """
         with open(config, "r") as file:
             config_list = file.read().splitlines()
         # remove all comments
@@ -418,8 +461,7 @@ class Experiment(Window):
     def housekeeping(self):
         """Store and retrieve participant number from file as well as the configuration settings as a json file. Also checks that configuration has not changed between different runs of the same experiment."""
         # check if the results path exists, if it doesn't, create it
-        if not os.path.isdir(self.dir):
-            os.makedirs(self.dir)
+        os.makedirs(self.dir, exist_ok=True)
         # read in the participant and the config json files
         try:
             self.read_housekeeping_files()
@@ -443,6 +485,7 @@ class Experiment(Window):
         # read in the participant file
         with open(self.part_file, 'r') as file:
             self.part_num = int(file.read())
+        # next step: check the json file
         self.check_housekeeping_files()
 
     def check_housekeeping_files(self):
@@ -471,7 +514,17 @@ class Experiment(Window):
             f"Participant {self.part_num}/{self.config['participants']} in list {self.item_list_no}")
 
     def retrieve_items(self, filename, warm_up=False):
-        """Retrieve the items from the specified item file and randomize their order if specified. Items are stored in items object."""
+        """Retrieve the items from the specified item file and randomize their order if specified, return a pandas DF.
+
+        Arguments:
+            filename {str} -- File that contains the items in a table-like format
+
+        Keyword Arguments:
+            warm_up {bool} -- Whether a warm-up list is handed over; if True multiple lists are assumed to exist (default: {False})
+
+        Returns:
+            df -- pandas DF will all the item info
+        """
         # with warm-up, there's no need to add the item list number, since there's only one file
         if warm_up:
             infile = filename
@@ -485,7 +538,7 @@ class Experiment(Window):
             f"{infile}{self.config['item_file_extension']}")
 
         # if so specified and we're past the warm-up phase, randomize the items
-        if self.config["items_randomize"] and not warm_up:
+        if all([self.config["items_randomize"], not warm_up]):
             df_items = df_items.sample(frac=1).reset_index(drop=True)
 
         # rearrange the columns of the data frame using the entries in item_file_columns; don't use the remaining ones
@@ -524,18 +577,30 @@ class Experiment(Window):
         return pd.DataFrame(columns=header_list)
 
     def resize_image(self, x, desired_width=250):
-        """Resize and return images for dynamic forced choice tasks."""
+        """Resize and return images as Tkinter-useable objects.
+
+        Arguments:
+            x {str} -- Image file name
+
+        Keyword Arguments:
+            desired_width {int} -- Value to resize the width to (height is calculated automatically; aspect ratio is kept the same) (default: {250})
+
+        Returns:
+            PhotoImage -- Image object for use in tkinter apps
+        """
         image = Image.open(x)
         # compute rescaled dimensions
         new_dimensions = (int(image.width / (image.width / desired_width)),
                           int(image.height / (image.width / desired_width)))
+        # resize the image to the desired dims
         image = image.resize(new_dimensions, Image.ANTIALIAS)
+        # and return a tkinter-usable version
         return ImageTk.PhotoImage(image)
 
     def unfinished_participant_results(self):
         """Depending on user settings, delete or keep data from experiment runs that were ended before the intended stopping point."""
         # if specified by user, do not save unfinished participant results (according to the given ratio)
-        if all([self.config["remove_unfinished"], self.item_num < len(self.items) * self.config["remove_ratio"]]):
+        if all([self.config["remove_unfinished"], self.i_ix < len(self.items) * self.config["remove_ratio"]]):
             # also reduce the participant number in the housekeeping file
             self.part_num -= 1
             with open(self.part_file, 'w') as file:
@@ -549,7 +614,11 @@ class Experiment(Window):
             self.logger.info(f"Unfinsihed participant will be counted.")
 
     def delete_file(self, file):
-        """Delete files or directories."""
+        """Delete files or directories.
+
+        Arguments:
+            file {str} -- File/directory to be deleted
+        """
         try:
             os.remove(file)
             self.logger.info(f"File deleted: {file}")
@@ -599,38 +668,6 @@ class Experiment(Window):
 
         return df_all
 
-    def generate_plot(self, df, dv, by=""):
-        """Generate a and return plot to have an overview of the results
-
-        Arguments:
-            df {pandas DF} -- DataFrame containing the results (e.g. from self.merge_all_results)
-            dv {str} -- Dependent variable (judgment; reaction_time)
-
-        Keyword Arguments:
-            by {str} -- add to generate facets; e.g. 'item' or 'item + id' (default: {""})
-
-        Returns:
-            plot -- Seaborn plot object that can be printed
-        """
-        plot = (ggplot(df, aes("cond", dv, color="cond", pch="cond", group=1))
-                # points and lines for means
-                + geom_point(stat="summary", fun_y=statistics.mean)
-                + geom_line(stat="summary",
-                            fun_y=statistics.mean, color="gray")
-                # error bars with 95 % CI
-                + stat_summary(fun_data='mean_cl_normal',
-                               geom="errorbar", width=0.25)
-                # single observations as points
-                + geom_jitter(alpha=.3, width=.2)
-                # no legend
-                + guides(color=False, pch=False)
-                + theme_minimal()
-                + labs(y=f"{dv} +/- 95%CI"))
-        # with a faceting argument, add facets to the plot
-        if by:
-            plot = (plot + facet_wrap(f"~ {by}"))
-        return plot
-
     def read_multi_ext(self, file, extension=None):
         """Read csv, xlsx, and txt files and returns a pandas DataFrame.
 
@@ -671,86 +708,6 @@ class Experiment(Window):
             df.to_excel(file, sheet_name='Sheet1', index=False)
         elif extension == ".txt":
             df.to_table(file, index=False)
-
-    def to_latin_square(self, df, outname, sub_exp_col="sub_exp", cond_col="cond", item_col="item", item_number_col="item_number"):
-        """Take a dataframe with all conditions and restructure it with Latin Square. Saves the files.
-
-        Arguments:
-            df {df} -- pandas Dataframe with all conditions for each item
-            outname {str} -- Name for the saved files (uniqueness handled automatically); include extension
-
-        Keyword Arguments:
-            sub_exp_col {str} -- Column containing the subexperiment identifier (default: {"sub_exp"})
-            cond_col {str} -- Column containing the condition identifiers (default: {"cond"})
-            item_col {str} -- Column with the item text (default: {"item"})
-            item_number_col {str} -- Column with the item number (default: {"item_number"})
-
-        Returns:
-            list -- List with all the names of the files that were saved to disk
-        """
-        # two lists we will be adding the split-up dfs to
-        dfs_critical = []
-        dfs_filler = []
-        # get the extension so we can reuse it for saving process
-        name, extension = os.path.splitext(outname)
-        # split the dataframe by the sub experiment value
-        dfs = [pd.DataFrame(x) for _, x in df.groupby(
-            sub_exp_col, as_index=False)]
-        for frame in dfs:
-            # get the unique condition values and sort them
-            conditions = sorted(list(set(frame[cond_col])))
-
-            # do a cartesian product of item numbers and conditions
-            products = [(item, cond) for item in set(frame[item_number_col])
-                        for cond in conditions]
-            # check if all such products exist in the dataframe
-            check_list = [((frame[item_number_col] == item)
-                           & (frame[cond_col] == cond)).any() for item, cond in products]
-            # list the missing combinations
-            missing_combos = ', '.join([''.join(map(str, product)) for product, boolean in zip(
-                products, check_list) if not boolean])
-
-            # stop the process if not all permutations are present
-            if not all(check_list):
-                raise Exception(
-                    f"Not all items-cond combinations in the data. Missing: {missing_combos}")
-
-            # generate the appropriate amount of lists
-            for k in range(len(conditions)):
-                # order the conditions to match the list being created
-                lat_conditions = conditions[k:] + conditions[:k]
-                # generate (and on subsequent runs reset) the new df with all the columns in the argument df
-                out_df = pd.DataFrame(columns=frame.columns)
-                # look for the appropriate rows in the argument df (using the conditions multiple times with 'cycle')
-                for item, cond in zip(set(sorted(frame[item_number_col])), cycle(lat_conditions)):
-                    # find the row in questions
-                    out_l = [out_df, frame.loc[(frame[item_number_col] == item) &
-                                               (frame[cond_col] == cond)]]
-                    # add it at the end of the dataframe
-                    out_df = pd.concat(out_l)
-                # reorder the most important columns
-                columns_to_order = [item_col, sub_exp_col,
-                                    item_number_col, cond_col]
-                # and just add the rest (if any)
-                new_columns = columns_to_order + \
-                    (out_df.columns.drop(columns_to_order).tolist())
-                out_df = out_df[new_columns]
-                # add multi-list dfs to the critical list
-                if len(lat_conditions) > 1:
-                    dfs_critical.append(out_df)
-                # add single-condition dfs to the filler dict
-                else:
-                    dfs_filler.append(out_df)
-
-        # add all filler lists to the critical ones
-        for filler in dfs_filler:
-            # replace the current df with the longer version containing the fillers as well
-            for i, df in enumerate(dfs_critical):
-                dfs_critical[i] = pd.concat([df, filler])
-
-        # save all lists individually with a suffix corresponding to the differnt lists
-        for i, df in enumerate(dfs_critical):
-            save_multi_ext(df, f"{name}{i+1}{extension}")
 
     def send_confirmation_email(self):
         """Send confirmation e-mail to specified recipient with merged results file attached."""
@@ -866,7 +823,7 @@ class Experiment(Window):
     def dynamic_fc_buttons(self):
         """Display either image or text buttons that take their arguments from the item file (dynamic FC)."""
         self.fc_images = {}  # reset images dict
-        for x, name in zip(self.items.iloc[self.item_num, 4:], self.items.iloc[:, 4:].columns):
+        for x, name in zip(self.items.iloc[self.i_ix, 4:], self.items.iloc[:, 4:].columns):
             if self.config["dynamic_img"]:
                 # store images in dict (otherwise they won't be displayed)
                 self.fc_images[x] = self.resize_image(x)
@@ -894,64 +851,60 @@ class Experiment(Window):
         # if no other text argument is passed, use the text in the configuration file
         if text is None:
             text = self.config["button_text"]
-        self.display_line()
+        # display a line
+        spacer_line = Frame(self.root, height=2, width=800, bg="gray90")
+        spacer_line.pack(side="top", anchor="c", pady=20)
 
         # frame and button with text for the submit button
         frame_submit = Frame(self.root)
         frame_submit.pack(expand=False, fill="both", side="top", pady=10)
         self.submit = Button(frame_submit, text=text, command=continue_func, fg="blue", font=(
-            self.config["font"], self.config["basesize"] - 10), highlightcolor="gray90", highlightbackground="white", highlightthickness=0, padx=10, pady=5,)
+            self.config["font"], self.config["basesize"] - 10), highlightcolor="gray90", highlightbackground="white", highlightthickness=0, padx=10, pady=5)
         self.submit.pack()
-        # in the critical portion of the audio stimuli, the button is deactivated by default and becomes available after the item was played in full
-        # in self-paced reading, only after all words of an item have been displayed
-        if all([self.phases["critical"], self.config["self_paced_reading"]]):
-            self.submit.config(state="disabled")
 
     ''' SECTION V: methods that are called upon button or keyboard presses '''
 
     def create_masked_item(self):
         """Take item and mask letters and words with underscores, depending on word counter."""
         # replace all non-whitespace characters with underscores
-        self.masked = re.sub("[^ ]", "_", self.items.iloc[self.item_num, 0])
+        self.masked = re.sub("[^ ]", "_", self.items.iloc[self.i_ix, 0])
+        # generate a list from the strings to be able to manipulate it
         masked_split = self.masked.split()
 
         # if cumulative option is selected, the word identified by counter and all previous ones will be shown
         if self.config["cumulative"]:
-            for i in range(self.word_index):
-                masked_split[i] = self.items.iloc[self.item_num, 0].split()[i]
+            masked_split[:self.w_ix] = self.items.iloc[self.i_ix, 0].split()[
+                :self.w_ix]
         # if non-cumulative, only the target word is displayed
         else:
-            # if the index is zero, dont unmask anything
-            if self.word_index == 0:
-                masked_split = masked_split
-            # otherwise show the word bearing the index - 1 (without the subtraction we would always skip the first word in the unmasking because of the previous part of the conditional)
-            else:
-                masked_split[self.word_index - 1] = self.items.iloc[self.item_num, 0].split()[
-                    self.word_index - 1]
+            # if the index is zero, keep the string as it is
+            if self.w_ix > 0:
+                # otherwise show the word bearing the index - 1 (without the subtraction we would always skip the first word in the unmasking because of the previous part of the conditional)
+                masked_split[self.w_ix - 1] = self.items.iloc[self.i_ix, 0].split()[
+                    self.w_ix - 1]
 
         # start the reaction times
         self.time_start = time.time()
 
+        # return the new list as a space-separated string
         return " ".join(masked_split)
 
     def play_stimulus(self):
         """Play the file from the item list; either locally or via streaming it from the online source."""
         # check if the item is a link, if yes retrieve it
-        if "https://" in self.items.iloc[self.item_num, 0]:
+        if "https://" in self.items.iloc[self.i_ix, 0]:
             # google drive export link conversion to usable link for playback
             if self.config["google_drive_link"]:
-                url = self.items.iloc[self.item_num, 0].replace(
+                url = self.items.iloc[self.i_ix, 0].replace(
                     "file/d/", "uc?export=download&id=").replace("/view?usp=sharing", "")
                 url = BytesIO(urlopen(url).read())
             # for others, just use the link in the item file
             else:
-                url = BytesIO(
-                    urlopen(self.items.iloc[self.item_num, 0]).read())
+                url = BytesIO(urlopen(self.items.iloc[self.i_ix, 0]).read())
             self.sound = pygame.mixer.Sound(url)
         else:
             # load file into mixer
-            self.sound = pygame.mixer.Sound(
-                self.items.iloc[self.item_num, 0])
+            self.sound = pygame.mixer.Sound(self.items.iloc[self.i_ix, 0])
         # start time we need for audio stimuli reaction time
         self.time_start = time.time()
         # play file
@@ -979,28 +932,31 @@ class Experiment(Window):
         self.start_item_phase(not self.config["warm_up"])
 
     def next_word(self, event=None):
-        """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary."""
-        # NOTE: the event argument is just there to catch the event argument passed down by the button press
+        """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary.
+
+        Keyword Arguments:
+            event {tkinter event} -- Argument not used; but tkinter button presses always pass an event that needs to be dealt with (default: {None})
+        """
         # if the word is in the middle of the item, take the reaction times
-        if self.word_index > 0:
+        if self.w_ix > 0:
             # reaction times for the current word
-            self.spr_reaction_times[self.word_index] = time.time(
-            ) - self.time_start
+            self.spr_reaction_times[self.w_ix] = time.time() - self.time_start
         # if all words have been shown, remask the item and activate the continue button
-        if self.word_index == len(self.items.iloc[self.item_num, 0].split()):
+        if self.w_ix == len(self.items.iloc[self.i_ix, 0].split()):
             # re-mask the item text so that participants cant just read the entire item at the end (especially important in the cumulative version)
             self.item_text.config(text=self.masked)
             # allow continuation
             self.enable_submit()
-        # if there are more words, increase word index, unmask next word and record button press time
         else:
-            self.word_index += 1
+            # if there are more words, increase word index
+            self.w_ix += 1
+            # and unmask next word
             self.item_text.config(text=self.create_masked_item())
 
     def submit_control(self):
         """Submit the judgment for self-paced reading control questions and move to the next item afterwards (if a choice was made)."""
         if self.judgment.get():
-            self.logger.info(f"Control {self.item_num + 1}/{len(self.items)}!")
+            self.logger.info(f"Control {self.i_ix + 1}/{len(self.items)}!")
             self.next_self_paced_reading_item()
         else:
             self.display_error(self.config["error_judgment"])
@@ -1019,7 +975,7 @@ class Experiment(Window):
                 reaction_time = reaction_time - self.sound.get_length()
 
             # progress report
-            self.logger.info(f"Item {self.item_num + 1}/{len(self.items)}!")
+            self.logger.info(f"Item {self.i_ix + 1}/{len(self.items)}!")
 
             # save the judgment and the reaction times
             self.save_dependent_measures(reaction_time)
@@ -1033,7 +989,7 @@ class Experiment(Window):
         """General waypoint function that performs all necessary tasks to display a new item (if there are more to be shown)."""
         # reset buttons for next item and increase item counter
         self.judgment.set("")
-        self.item_num += 1
+        self.i_ix += 1
         # if there are more items to be shown, do that
         try:
             # reset the time counter for the reaction times
@@ -1051,17 +1007,7 @@ class Experiment(Window):
             self.item_list_over()
 
     def item_list_over(self):
-        """Either launch the feedback or critical section of the experiment (because all items were seen)."""
-        self.empty_window()
-        # if all items have been shown and we're already in the critical phase, go to feedback
-        if self.phases["critical"]:
-            self.display_feedback()
-        # go to the critical item list
-        else:
-            self.start_item_phase()
-
-    def item_list_over_spr(self):
-        """Either launch the feedback or critical section of the experiment (because all items were seen). For self-paced-reading"""
+        """Either launch the feedback or critical section of the experiment (because all items were seen)"""
         self.empty_window()
         if self.phases["critical"]:
             # remove the binding from the space bar
@@ -1073,12 +1019,16 @@ class Experiment(Window):
             self.start_item_phase()
 
     def save_dependent_measures(self, reaction_time=None):
-        """Compile all the info we need for the results file and add it to the results dataframe."""
+        """Compile all the info we need for the results file and add it to the results dataframe.
+
+        Keyword Arguments:
+            reaction_time {int} -- Reaction times for current item; only used in non-self-paced-reading experiments (default: {None})
+        """
         # add the date to the file
         today = datetime.date.today().strftime("%d/%m/%Y")
         # set up all the info that should be written to the file (in that order)
         out_l = [self.id_string, today, self.start_time, self.config["tester"],
-                 self.meta_entries, list(self.items.iloc[self.item_num, 1:4])]
+                 self.meta_entries, list(self.items.iloc[self.i_ix, 1:4])]
         # reaction times for all words
         if self.config["self_paced_reading"]:
             out_l = out_l + \
@@ -1094,17 +1044,17 @@ class Experiment(Window):
 
     def next_self_paced_reading_item(self):
         """Shows the next item in self-paced reading experiment, calls functions to save reaction times and judgments. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
-        self.logger.info(f"Item {self.item_num + 1}/{len(self.items)}!")
+        self.logger.info(f"Item {self.i_ix + 1}/{len(self.items)}!")
 
         self.submit.config(state="disabled")
         self.save_dependent_measures()
-        self.item_num += 1
+        self.i_ix += 1
 
         try:
             # empty the stored reaction times
             self.spr_reaction_times = {}
             # reset the word index
-            self.word_index = 0
+            self.w_ix = 0
             # reset the control judgment
             self.judgment.set("")
             # and go back to the masked item frame
@@ -1113,25 +1063,27 @@ class Experiment(Window):
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError as e:
             self.logger.info(f"No more items to show: {e}")
-            self.item_list_over_spr()
+            self.item_list_over()
 
     def next_text_item(self):
         """Update the item text on the screen to show the new item and handle reaction times and button resets."""
         # disable the likert scale button
         for obj in self.likert_list:
             obj.config(state="disabled")
+        # disable the submit button as well
+        self.submit.config(state="disabled")
         # start the timer for reactivation
         read_item_timer = Timer(
             self.config["delay_judgment"], self.enable_submit)
         read_item_timer.start()
         # show new item
         self.item_text.config(
-            text=self.items.iloc[self.item_num, 0])
+            text=self.items.iloc[self.i_ix, 0])
 
     def next_audio_item(self):
         """Disable the judgment and submit buttons and flash the play button."""
         # because the play button will automatically update itself to play the new item (bc of the item_num), we only need to disable the button for audio stimuli
-        if self.item_num < len(self.items):
+        if self.i_ix < len(self.items):
             self.submit.config(state="disabled")
             for obj in self.likert_list:
                 obj.config(state="disabled")
@@ -1143,12 +1095,12 @@ class Experiment(Window):
     def update_judgment_buttons(self):
         """Update the text/image for the FC buttons; order is randomized."""
         self.fc_images = {}
-        for i, item, col in zip(random.sample(range(len(self.likert_list)), len(self.likert_list)), self.items.iloc[self.item_num, 4:], self.items.iloc[:, 4:].columns):
+        for i, item, col in zip(random.sample(range(len(self.likert_list)), len(self.likert_list)), self.items.iloc[self.i_ix, 4:], self.items.iloc[:, 4:].columns):
             # use images instead of text with dynamic image FC (resize before display)
             if self.config["dynamic_img"]:
                 self.fc_images[item] = self.resize_image(item)
                 self.likert_list[i].config(
-                    text=None, value=col, image=self.fc_images[item])
+                    value=col, image=self.fc_images[item])
             # change the text to that of the current item (since item counter has been incremented)
             else:
                 self.likert_list[i].config(text=item, value=col)
@@ -1160,7 +1112,7 @@ class Experiment(Window):
 
         # if exp was quit before intended end point (and thus there's no actual feedback), put a notice in the file
         if self.phases["critical"]:
-            feedback = f"[CANCELLED at {self.item_num + 1}/{len(self.items)} items]"
+            feedback = f"[CANCELLED at {self.i_ix + 1}/{len(self.items)} items]"
         # if there is a feedback, use that
         elif self.feedback.get().replace(" ", ""):
             feedback = self.feedback.get()
@@ -1175,10 +1127,9 @@ class Experiment(Window):
             df_feedback = self.read_multi_ext(self.feedback_file)
         # or create one if it couldn't be found
         except FileNotFoundError as e:
-            # setup the column headers
-            cols = ["id", "duration_minutes", "part_no", "feedback"]
-            # and create the pandas object
-            df_feedback = pd.DataFrame(columns=cols)
+            # create the pandas object with the cols
+            df_feedback = pd.DataFrame(
+                columns=["id", "duration_minutes", "part_no", "feedback"])
             self.logger.info(f"No feedback file found, creating one: {e}")
 
         # add the new row of the current participant and save the file
@@ -1204,21 +1155,30 @@ class Experiment(Window):
 
     def enable_submit(self):
         """Unlock disabled submit buttons, either after a timer or after an event (like the audio finishing to play) has occurred."""
-        self.submit.config(state="normal")
+        # try to enable the likert the buttons and the submit buttons
         try:
+            self.submit.config(state="normal")
             for obj in self.likert_list:
                 obj.config(state="normal")
+        # do nothing if they do not exist for whatever reason
         except AttributeError:
             pass
 
     def flash_play_button(self, count):
-        """Flash the play button a number of times to encourage that it is clicked by rapidly color swapping."""
+        """Flash the play button a number of times to encourage that it is clicked by rapidly color swapping.
+
+        Arguments:
+            count {int} -- Counter to keep track of how many flashes to perform still (necessary because function calls itself)
+        """
+        # get the colors
         bg = self.audio_btn.cget('highlightcolor')
         fg = self.audio_btn.cget('highlightbackground')
+        # and then assign them to each other's original positions
         self.audio_btn.config(highlightcolor=fg, highlightbackground=bg)
+        # count keeps track of how many swaps have been done
         count += 1
         # if the specified amount of flashes has not been reached call the function again, passing the updated count
-        if (count < 10):
+        if count <= 10:
             self.audio_btn.after(100, self.flash_play_button, count)
 
     def on_closing(self):
