@@ -12,6 +12,7 @@ import smtplib
 import ssl
 import string  # participant id
 import time
+from itertools import cycle
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -33,7 +34,7 @@ from PIL import Image, ImageTk
     - option to have several experimental blocks with a break inbetween
 
     FIXME:
-    -
+    - 
 '''
 
 
@@ -105,9 +106,6 @@ class Experiment(Window):
         self.config = self.get_config_dict(config)
         # folder for results, feedback and json
         self.dir = f"{self.config['experiment_title']}_results"
-        # file with feedback, duration, etc
-        self.feedback_file = os.path.join(
-            self.dir, f"FEEDBACK{self.config['results_file_extension']}")
         # one of the housekeeping files
         self.part_file = f"{self.config['experiment_title']}_participants.txt"
         # second one
@@ -122,12 +120,10 @@ class Experiment(Window):
         self.item_list_no = self.housekeeping()
         # randomly generated string as participant identifier
         self.id_string = self.id_generator()
-        # read the items and reorder to columns
+        # read the items and reorder to columns (reads in correct list based on item_list_no)
         self.items_critical = self.retrieve_items(self.config["item_file"])
-        # only load the warm up items if they're gonna be used
-        if self.config["warm_up"]:
-            self.items_warm_up = self.retrieve_items(
-                self.config["warm_up_file"], self.config["warm_up"])
+        # warm up items; None of if they're not gonna be used
+        self.items_warm_up = self.retrieve_items(self.config["warm_up_file"])
         # pandas df which we'll append the item results to
         self.outdf = self.prepare_results_df()
 
@@ -142,7 +138,7 @@ class Experiment(Window):
             self.logo = self.resize_image(self.config["logo"], 100)
 
         # time of testing
-        self.exp_start = time.time()  # track eperiment duration
+        self.exp_start = time.time()  # to track eperiment duration
         self.start_time = datetime.datetime.now().strftime("%H:%M:%S")
 
     def __str__(self):
@@ -161,17 +157,18 @@ class Experiment(Window):
         """Initialize the meta-data collection section of the experiment."""
         # show the logo and the line; usually called via empty_window
         self.display_spacer_frame()
-        # if there was a problem with the housekeeping files, show error message
-        if self.phases['problem']:
-            self.display_long(
-                f"You edited some settings or there is some other problem.\nThe experiment cannot proceed. Check the log file.")
+        # do not proceed if all participants slots are filled already
+        if self.part_num == self.config['participants']:
+            self.experiment_finished()
         else:
-            # do not proceed if all participants slots are filled already
-            if self.part_num == self.config['participants']:
-                self.experiment_finished()
+            # if there was a problem with the housekeeping files, show error message
+            if self.phases['problem']:
+                self.display_long(
+                    f"You edited some settings or there is some other problem.\nThe experiment cannot proceed. Check the log file.")
             else:
-                # store meta data
+                # store for meta data
                 self.meta_entries = []
+                # show the intro text and the forms
                 self.display_meta_information_forms()
                 self.submit_button(self.submit_participant_information)
         self.root.mainloop()
@@ -252,6 +249,11 @@ class Experiment(Window):
         if self.config["confirm_completion"]:
             self.send_confirmation_email()
 
+    def exit_exposition(self):
+        """End the exposition stage and move on to either warm-up or critical section."""
+        self.empty_window()
+        self.start_item_phase(not self.config["warm_up"])
+
     ''' SECTION II: display methods used by the initializing functions '''
 
     def setup_gui(self):
@@ -317,6 +319,7 @@ class Experiment(Window):
         # show the instruction text for the meta data collection
         self.display_short(self.config["meta_instruction"], -5)
 
+        # FIXME: i, text in enumerate(self.config["meta_fields"])
         # create frame and label for each of the entry fields
         for i in range(len(self.config["meta_fields"])):
             row = Frame(self.root)
@@ -376,8 +379,6 @@ class Experiment(Window):
 
     def display_feedback(self):
         """Display instructions and entry field for feedback after the critical section."""
-        # save the results
-        self.save_complete_results()
         # unless the feedback text is empty, show a frame to allow feedback entry
         if self.config["feedback"]:
             # instruction for the feedback
@@ -387,7 +388,7 @@ class Experiment(Window):
             self.feedback.pack(side="top", expand=True,
                                fill="x", ipady=5, padx=50)
             # button to submit the feedback
-            self.submit_button(self.save_feedback)
+            self.submit_button(self.save_complete_results)
         else:
             self.display_over()
 
@@ -513,7 +514,7 @@ class Experiment(Window):
         self.logger.info(
             f"Participant {self.part_num}/{self.config['participants']} in list {self.item_list_no}")
 
-    def retrieve_items(self, filename, warm_up=False):
+    def retrieve_items(self, filename):
         """Retrieve the items from the specified item file and randomize their order if specified, return a pandas DF.
 
         Arguments:
@@ -525,20 +526,24 @@ class Experiment(Window):
         Returns:
             df -- pandas DF will all the item info
         """
-        # with warm-up, there's no need to add the item list number, since there's only one file
-        if warm_up:
-            infile = filename
-        # if were in the critical phase
+        # with critical items
+        if filename == self.config["item_file"]:
+            # use the correct list of items
+            infile = f"{filename}{self.item_list_no}"
         else:
-            # load the correct item file for the specific participant
-            infile = filename + str(self.item_list_no)
+            # with warm-up, there's no need to add the item list number, since there's only one file
+            if self.config['warm_up']:
+                infile = filename
+            # if no warm-up is gonna be performed, no need to read in the file
+            else:
+                return None
 
         # read in the conditions file
         df_items = self.read_multi_ext(
             f"{infile}{self.config['item_file_extension']}")
 
-        # if so specified and we're past the warm-up phase, randomize the items
-        if all([self.config["items_randomize"], not warm_up]):
+        # if so specified and we're dealing with critical items, randomize the items
+        if all([self.config["items_randomize"], filename == self.config['item_file']]):
             df_items = df_items.sample(frac=1).reset_index(drop=True)
 
         # rearrange the columns of the data frame using the entries in item_file_columns; don't use the remaining ones
@@ -610,6 +615,12 @@ class Experiment(Window):
         else:
             # add a column with a constant value showing that the participant did not finish the exp
             self.outdf['finished'] = 'F'
+            # add the experiment duration
+            self.outdf['duration'] = round(
+                (time.time() - self.exp_start)/60, 2)
+            # add a column that indicates when the exp was quit
+            self.outdf['feedback'] = f"[{self.i_ix}/{len(self.items)} items completed]"
+            # save the results file and log it
             self.save_multi_ext(self.outdf, self.outfile)
             self.logger.info(f"Unfinsihed participant will be counted.")
 
@@ -650,11 +661,6 @@ class Experiment(Window):
             glob.glob(os.path.join(
                 self.dir, f'*{self.config["results_file_extension"]}')))
 
-        # remove the feedback file
-        try:
-            results_files.remove(self.feedback_file)
-        except ValueError as e:
-            self.logger.info(f"Feedback file not in file list: {e}")
         # print out which files were found as well as their size
         self.logger.info(f'Found {len(results_files)} results files:')
 
@@ -708,6 +714,109 @@ class Experiment(Window):
             df.to_excel(file, sheet_name='Sheet1', index=False)
         elif extension == ".txt":
             df.to_table(file, index=False)
+
+    def reorder_columns(self, df, item_col, sub_exp_col, item_number_col, cond_col):
+        """Reorders the most important columns in a item list dataframe and appends all remaining ones. Returns the df.
+
+        Arguments:
+            df {df} -- pandas DataFrame to check
+            sub_exp_col {str} -- Name of the subexperiment column
+            item_number_col {str} -- Name of the item number column
+            cond_col {str} -- Name of the conditions column
+
+        Returns:
+            df -- pandas df with reordered columns
+        """
+        # reorder the most important columns
+        col_order = [item_col, sub_exp_col,
+                     item_number_col, cond_col]
+        # and just add the remaining columns (if any)
+        new_cols = col_order + (df.columns.drop(col_order).tolist())
+        return df[new_cols]
+
+    def check_permutations(self, df, item_number_col, cond_col, conditions):
+        """Check whether all permutations of items and conditions are present in a data frame. Checking method for 'to_latin_square'.
+
+        Arguments:
+            df {df} -- pandas DataFrame to check
+            item_number_col {str} -- Name of the item number column
+            cond_col {str} -- Name of the conditions column
+            conditions {list} -- List of unique conditions
+
+        Raises:
+            Exception: When not all permutations are present in the df
+        """
+        # do a cartesian product of item numbers and conditions
+        products = [(item, cond) for item in set(df[item_number_col])
+                    for cond in conditions]
+        # check if all such products exist in the dataframe
+        check_list = [((df[item_number_col] == item)
+                       & (df[cond_col] == cond)).any() for item, cond in products]
+        # if they are not all there, raise an error and show which combos are missing
+        if not all(check_list):
+            # get missing combinations
+            missing_combos = ', '.join([''.join(map(str, product)) for product, boolean in zip(
+                products, check_list) if not boolean])
+            raise Exception(
+                f"Not all permutations of items and conditions are present in the dataframe. Missing combinations: {missing_combos}")
+
+    def to_latin_square(self, df, outname, sub_exp_col="sub_exp", cond_col="cond", item_col="item", item_number_col="item_number"):
+        """Take a dataframe with all conditions and restructure it with Latin Square. Saves the files.
+
+        Arguments:
+            df {df} -- pandas Dataframe with all conditions for each item
+            outname {str} -- Name for the saved files (uniqueness handled automatically); include extension
+
+        Keyword Arguments:
+            sub_exp_col {str} -- Column containing the subexperiment identifier (default: {"sub_exp"})
+            cond_col {str} -- Column containing the condition identifiers (default: {"cond"})
+            item_col {str} -- Column with the item text (default: {"item"})
+            item_number_col {str} -- Column with the item number (default: {"item_number"})
+        """
+        dfs_critical = []
+        dfs_filler = []
+        name, extension = os.path.splitext(outname)
+        # split the dataframe by the sub experiment value
+        dfs = [pd.DataFrame(x) for _, x in df.groupby(
+            sub_exp_col, as_index=False)]
+        for frame in dfs:
+            # get the unique condition values and sort them
+            conditions = sorted(list(set(frame[cond_col])))
+
+            # check whether all combos of items and conditions are present
+            self.check_permutations(
+                frame, item_number_col, cond_col, conditions)
+
+            # for filler dfs, just reorder the columns
+            if len(conditions) == 1:
+                frame = self.reorder_columns(
+                    frame, item_col, sub_exp_col, item_number_col, cond_col)
+                # and add them to the correct list
+                dfs_filler.append(frame)
+            # for critical sub experiments generate the appropriate amount of lists
+            else:
+                for k in range(len(conditions)):
+                    # order the conditions to match the list being created
+                    lat_conditions = conditions[k:] + conditions[:k]
+                    # generate (and on subsequent runs reset) the new df with all the columns in the argument df
+                    out_df = pd.DataFrame(columns=frame.columns)
+                    # look for the appriate rows in the argument df (using the conditions multiple times with 'cycle')
+                    out_l = []
+                    for item, cond in zip(set(sorted(frame[item_number_col])), cycle(lat_conditions)):
+                        out_l.append(frame[frame.item_number.eq(
+                            item) & frame.cond.eq(cond)])
+                    out_df = pd.concat(out_l)
+                    # reorder the most important columns
+                    out_df = self.reorder_columns(
+                        out_df, item_col, sub_exp_col, item_number_col, cond_col)
+                    dfs_critical.append(out_df)
+
+        # add the fillers to the critical lists
+        for i, df in enumerate(dfs_critical):
+            dfs_critical[i] = pd.concat([df, *dfs_filler])
+
+        for i, df in enumerate(dfs_critical):
+            self.save_multi_ext(df, f"{name}{i+1}{extension}")
 
     def send_confirmation_email(self):
         """Send confirmation e-mail to specified recipient with merged results file attached."""
@@ -926,11 +1035,6 @@ class Experiment(Window):
             self.empty_window()
             self.start_exposition_phase()
 
-    def exit_exposition(self):
-        """End the exposition stage and move on to either warm-up or critical section."""
-        self.empty_window()
-        self.start_item_phase(not self.config["warm_up"])
-
     def next_word(self, event=None):
         """Increase the word counter and update the label text in self-paced-reading experiments. Record reaction times for each word in dictionary.
 
@@ -1083,14 +1187,10 @@ class Experiment(Window):
     def next_audio_item(self):
         """Disable the judgment and submit buttons and flash the play button."""
         # because the play button will automatically update itself to play the new item (bc of the item_num), we only need to disable the button for audio stimuli
-        if self.i_ix < len(self.items):
-            self.submit.config(state="disabled")
-            for obj in self.likert_list:
-                obj.config(state="disabled")
-            self.flash_play_button(0)
-        else:
-            self.logger.info(f"No more items to show")
-            self.item_list_over()
+        self.submit.config(state="disabled")
+        for obj in self.likert_list:
+            obj.config(state="disabled")
+        self.flash_play_button(0)
 
     def update_judgment_buttons(self):
         """Update the text/image for the FC buttons; order is randomized."""
@@ -1105,53 +1205,20 @@ class Experiment(Window):
             else:
                 self.likert_list[i].config(text=item, value=col)
 
-    def save_feedback(self):
-        """Save participant feedback file together with the results, but under a different name; all feedback texts together in a single file."""
-        # subtract the start time from current time and convert it to minutes
-        tot_duration = round((time.time() - self.exp_start)/60, 2)
-
-        # if exp was quit before intended end point (and thus there's no actual feedback), put a notice in the file
-        if self.phases["critical"]:
-            feedback = f"[CANCELLED at {self.i_ix + 1}/{len(self.items)} items]"
-        # if there is a feedback, use that
-        elif self.feedback.get().replace(" ", ""):
-            feedback = self.feedback.get()
-        # if participant did not write any feedback, put NA
-        else:
-            feedback = "NA"
-
-        # compile all the data into a list
-        out_l = [self.id_string, tot_duration, self.part_num, feedback]
-        # read in the feedback file
-        try:
-            df_feedback = self.read_multi_ext(self.feedback_file)
-        # or create one if it couldn't be found
-        except FileNotFoundError as e:
-            # create the pandas object with the cols
-            df_feedback = pd.DataFrame(
-                columns=["id", "duration_minutes", "part_no", "feedback"])
-            self.logger.info(f"No feedback file found, creating one: {e}")
-
-        # add the new row of the current participant and save the file
-        df_feedback.loc[len(df_feedback)] = out_l
-        self.save_multi_ext(df_feedback, self.feedback_file)
-
-        # show the goodbye message
-        try:
-            self.display_over()
-        # if the GUI has been exited already, do nothing
-        except TclError:
-            pass
-
     def save_complete_results(self):
         """Save the results and note that the participant completed all items."""
         # end the critical portion
         self.phases["critical"] = False
         # add a column to the results indicating that the participants finished the critical portion entirely
         self.outdf['finished'] = "T"
+        # add a duration column
+        self.outdf['duration'] = round((time.time() - self.exp_start)/60, 2)
+        # and add the feedback
+        self.outdf['feedback'] = self.feedback.get() or "NA"
         # save the results to disk
         self.save_multi_ext(self.outdf, self.outfile)
         self.logger.info(f"Results file saved: {self.outfile}")
+        self.display_over()
 
     def enable_submit(self):
         """Unlock disabled submit buttons, either after a timer or after an event (like the audio finishing to play) has occurred."""
@@ -1190,7 +1257,6 @@ class Experiment(Window):
             if self.phases["critical"]:
                 self.logger.warning("Critical section was quit manually.")
                 self.unfinished_participant_results()
-                self.save_feedback()
             else:
                 self.logger.info("Experiment quit outside the critical part.")
 
