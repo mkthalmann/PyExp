@@ -34,7 +34,7 @@ from PIL import Image, ImageTk
     - option to have several experimental blocks with a break inbetween
 
     FIXME:
-    - 
+    -
 '''
 
 
@@ -319,11 +319,10 @@ class Experiment(Window):
         # show the instruction text for the meta data collection
         self.display_short(self.config["meta_instruction"], -5)
 
-        # FIXME: i, text in enumerate(self.config["meta_fields"])
         # create frame and label for each of the entry fields
-        for i in range(len(self.config["meta_fields"])):
+        for i, field in enumerate(self.config["meta_fields"]):
             row = Frame(self.root)
-            lab = Label(row, width=15, text=self.config["meta_fields"][i], anchor='w', font=(
+            lab = Label(row, width=15, text=field, anchor='w', font=(
                 self.config["font"], self.config["basesize"] - 8))
             # create the entry fields and store them
             self.meta_entries.append(Entry(row))
@@ -379,7 +378,7 @@ class Experiment(Window):
 
     def display_feedback(self):
         """Display instructions and entry field for feedback after the critical section."""
-        # unless the feedback text is empty, show a frame to allow feedback entry
+        # unless the feedback field is empty, show a frame to allow feedback entry
         if self.config["feedback"]:
             # instruction for the feedback
             frame = self.display_short(self.config["feedback"], -5)
@@ -387,7 +386,7 @@ class Experiment(Window):
             self.feedback = Entry(frame)
             self.feedback.pack(side="top", expand=True,
                                fill="x", ipady=5, padx=50)
-            # button to submit the feedback
+            # button to save the results
             self.submit_button(self.save_complete_results)
         else:
             self.display_over()
@@ -520,11 +519,8 @@ class Experiment(Window):
         Arguments:
             filename {str} -- File that contains the items in a table-like format
 
-        Keyword Arguments:
-            warm_up {bool} -- Whether a warm-up list is handed over; if True multiple lists are assumed to exist (default: {False})
-
         Returns:
-            df -- pandas DF will all the item info
+            df -- pandas DF with all the item info
         """
         # with critical items
         if filename == self.config["item_file"]:
@@ -550,7 +546,7 @@ class Experiment(Window):
         columns_to_order = list(pd.core.common.flatten([self.config['item_or_file_col'], self.config['sub_exp_col'],
                                                         self.config['item_number_col'], self.config['cond_col'], self.config['extra_cols']]))
         try:
-            # try to rearrange the columns
+            # try to rearrange the columns and remove all non-mentioned columns in the file
             df_items = df_items[columns_to_order]
             # assign the df as a instance property
             return df_items
@@ -576,7 +572,7 @@ class Experiment(Window):
             # add judgments and reaction times
             header_list = header_list + ["judgment", "reaction_time"]
         # flatten the list of lists, remove capitalization and spaces (mainly from meta fields)
-        header_list = [item.casefold().replace(" ", "_")
+        header_list = [item.strip().casefold().replace(" ", "_")
                        for item in pd.core.common.flatten(header_list)]
         # initilize the results df
         return pd.DataFrame(columns=header_list)
@@ -613,16 +609,25 @@ class Experiment(Window):
             self.logger.info("Participant won't increase participant count.")
         # if not specified, save the dataframe
         else:
-            # add a column with a constant value showing that the participant did not finish the exp
-            self.outdf['finished'] = 'F'
-            # add the experiment duration
-            self.outdf['duration'] = round(
-                (time.time() - self.exp_start)/60, 2)
-            # add a column that indicates when the exp was quit
-            self.outdf['feedback'] = f"[{self.i_ix}/{len(self.items)} items completed]"
+            # add finished, duration and feedback columns
+            self.append_metrics()
             # save the results file and log it
             self.save_multi_ext(self.outdf, self.outfile)
-            self.logger.info(f"Unfinsihed participant will be counted.")
+            self.logger.info(f"Unfinished participant will be counted.")
+
+    def append_metrics(self):
+        """Add three columns to the results df: experiment duration, experiment finished, and feedback."""
+        # compute experiment duration in minutes
+        duration = round((time.time() - self.exp_start)/60, 2)
+        # whether the experiment was finished or not
+        finished = str(not self.phases['critical'])[0]
+        # feedback or number of items completed
+        feedback = self.feedback.get(
+        ) or f"[{self.i_ix}/{len(self.items)} items]"
+
+        # add all three columns
+        self.outdf = self.outdf.assign(finished=finished,
+                                       feedback=feedback, duration=duration)
 
     def delete_file(self, file):
         """Delete files or directories.
@@ -674,20 +679,16 @@ class Experiment(Window):
 
         return df_all
 
-    def read_multi_ext(self, file, extension=None):
+    def read_multi_ext(self, file):
         """Read csv, xlsx, and txt files and returns a pandas DataFrame.
 
         Arguments:
             file {str} -- File to read in
 
-        Keyword Arguments:
-            extension {str} -- Extension of the file; inferred if None (default: {None})
-
         Returns:
             df -- pandas DataFrame
         """
-        if extension is None:
-            _, extension = os.path.splitext(file)
+        _, extension = os.path.splitext(file)
         if extension == ".csv":
             df = pd.read_csv(file, sep=";")
         elif extension == ".xlsx":
@@ -696,18 +697,14 @@ class Experiment(Window):
             df = pd.read_table(file)
         return df
 
-    def save_multi_ext(self, df, file, extension=None):
+    def save_multi_ext(self, df, file):
         """Save a pandas DataFrame, depending on extension used in outname or given explicitly.
 
         Arguments:
             df {df} -- pandas DataFrame to save
             file {str} -- Name of the saved file
-
-        Keyword Arguments:
-            extension {str} -- Extension of the file; inferred if None (default: {None})
         """
-        if extension is None:
-            _, extension = os.path.splitext(file)
+        _, extension = os.path.splitext(file)
         if extension == ".csv":
             df.to_csv(file, sep=';', index=False)
         elif extension == ".xlsx":
@@ -813,9 +810,7 @@ class Experiment(Window):
 
         # add the fillers to the critical lists
         for i, df in enumerate(dfs_critical):
-            dfs_critical[i] = pd.concat([df, *dfs_filler])
-
-        for i, df in enumerate(dfs_critical):
+            df = pd.concat([df, *dfs_filler])
             self.save_multi_ext(df, f"{name}{i+1}{extension}")
 
     def send_confirmation_email(self):
@@ -958,8 +953,6 @@ class Experiment(Window):
             text {str} -- Text to be displayed on the button; if None, value will be taken from the config file (default: {None})
         """
         # if no other text argument is passed, use the text in the configuration file
-        if text is None:
-            text = self.config["button_text"]
         # display a line
         spacer_line = Frame(self.root, height=2, width=800, bg="gray90")
         spacer_line.pack(side="top", anchor="c", pady=20)
@@ -967,7 +960,7 @@ class Experiment(Window):
         # frame and button with text for the submit button
         frame_submit = Frame(self.root)
         frame_submit.pack(expand=False, fill="both", side="top", pady=10)
-        self.submit = Button(frame_submit, text=text, command=continue_func, fg="blue", font=(
+        self.submit = Button(frame_submit, text=text or self.config["button_text"], command=continue_func, fg="blue", font=(
             self.config["font"], self.config["basesize"] - 10), highlightcolor="gray90", highlightbackground="white", highlightthickness=0, padx=10, pady=5)
         self.submit.pack()
 
@@ -1209,12 +1202,8 @@ class Experiment(Window):
         """Save the results and note that the participant completed all items."""
         # end the critical portion
         self.phases["critical"] = False
-        # add a column to the results indicating that the participants finished the critical portion entirely
-        self.outdf['finished'] = "T"
-        # add a duration column
-        self.outdf['duration'] = round((time.time() - self.exp_start)/60, 2)
-        # and add the feedback
-        self.outdf['feedback'] = self.feedback.get() or "NA"
+        # add finished, duration, and feedback columns
+        self.append_metrics()
         # save the results to disk
         self.save_multi_ext(self.outdf, self.outfile)
         self.logger.info(f"Results file saved: {self.outfile}")
