@@ -493,11 +493,8 @@ class Experiment(Window):
         # read in the json file
         with open(self.config_file, "r") as file:
             compare_config = json.load(file)
-        # compare the core entries, as opposed to all of them; changing the font size in the middle of the exp shouldn't be a problem
-        if {k: self.config[k] for k in self.config_core} == {k: compare_config[k] for k in self.config_core}:
-            self.logger.info(f"Configuration check passed.")
-        # if core elements were changed indicate on as such on GUI screen and in log file
-        else:
+        # compare the json and the new config attribute, halt experiment if they're not the same
+        if {k: self.config[k] for k in self.config_core} != {k: compare_config[k] for k in self.config_core}:
             self.logger.warning(
                 f"The configurations for the currently running experiment have changed from previous participants.\nCheck the config file or start a new experiment (e.g. by changing the experiment title) to proceed\nConfig dict: { {k: self.config[k] for k in self.config_core} }\nCompare dict: { {k: compare_config[k] for k in self.config_core} }")
             # stop the display of other elements
@@ -666,16 +663,13 @@ class Experiment(Window):
             glob.glob(os.path.join(
                 self.dir, f'*{self.config["results_file_extension"]}')))
 
-        # print out which files were found as well as their size
-        self.logger.info(f'Found {len(results_files)} results files:')
-
         # read in all the individual result files and concatenate them length-wise
-        dfs = [self.read_multi_ext(x) for x in results_files]
-        df_all = pd.concat(dfs)
+        df_all = pd.concat([self.read_multi_ext(x) for x in results_files])
 
         if save_file:
             self.save_multi_ext(df_all, outfile)
-            self.logger.info(f"Merged results file generated: {outfile}")
+            self.logger.info(
+                f"Merged results file with {len(results_files)} input files generated: {outfile}")
 
         return df_all
 
@@ -698,7 +692,7 @@ class Experiment(Window):
         return df
 
     def save_multi_ext(self, df, file):
-        """Save a pandas DataFrame, depending on extension used in outname or given explicitly.
+        """Save a pandas DataFrame, depending on extension used in file name.
 
         Arguments:
             df {df} -- pandas DataFrame to save
@@ -771,7 +765,6 @@ class Experiment(Window):
             item_number_col {str} -- Column with the item number (default: {"item_number"})
         """
         dfs_critical = []
-        dfs_filler = []
         name, extension = os.path.splitext(outname)
         # split the dataframe by the sub experiment value
         dfs = [pd.DataFrame(x) for _, x in df.groupby(
@@ -779,38 +772,34 @@ class Experiment(Window):
         for frame in dfs:
             # get the unique condition values and sort them
             conditions = sorted(list(set(frame[cond_col])))
-
             # check whether all combos of items and conditions are present
             self.check_permutations(
                 frame, item_number_col, cond_col, conditions)
+            # rearrange the most important columns
+            frame = self.reorder_columns(
+                frame, item_col, sub_exp_col, item_number_col, cond_col)
 
-            # for filler dfs, just reorder the columns
-            if len(conditions) == 1:
-                frame = self.reorder_columns(
-                    frame, item_col, sub_exp_col, item_number_col, cond_col)
-                # and add them to the correct list
-                dfs_filler.append(frame)
             # for critical sub experiments generate the appropriate amount of lists
-            else:
+            if len(conditions) >= 1:
                 for k in range(len(conditions)):
                     # order the conditions to match the list being created
                     lat_conditions = conditions[k:] + conditions[:k]
-                    # generate (and on subsequent runs reset) the new df with all the columns in the argument df
-                    out_df = pd.DataFrame(columns=frame.columns)
                     # look for the appriate rows in the argument df (using the conditions multiple times with 'cycle')
                     out_l = []
                     for item, cond in zip(set(sorted(frame[item_number_col])), cycle(lat_conditions)):
                         out_l.append(frame[frame.item_number.eq(
                             item) & frame.cond.eq(cond)])
+                    # add all the rows we found into a combined df
                     out_df = pd.concat(out_l)
-                    # reorder the most important columns
-                    out_df = self.reorder_columns(
-                        out_df, item_col, sub_exp_col, item_number_col, cond_col)
+                    # add frame to critical list
                     dfs_critical.append(out_df)
+                # remove the frame from the dfs list (which will be the filler list at the end)
+                dfs.remove(frame)
 
         # add the fillers to the critical lists
         for i, df in enumerate(dfs_critical):
-            df = pd.concat([df, *dfs_filler])
+            df = pd.concat([df, *dfs])
+            # and save the lists
             self.save_multi_ext(df, f"{name}{i+1}{extension}")
 
     def send_confirmation_email(self):
