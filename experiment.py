@@ -2,8 +2,8 @@
 
 import datetime
 import glob
-import logging
 import io
+import logging
 import os
 import random  # randomize items, and FC options
 import re  # regular expressions
@@ -25,6 +25,7 @@ from urllib.request import urlopen  # linked files
 
 import pandas as pd
 import pygame  # audio
+import yaml
 from PIL import Image, ImageTk
 
 
@@ -109,7 +110,7 @@ class Experiment(Window):
         # one of the housekeeping files
         self.part_file = os.path.join(self.dir, "participants.txt")
         # second one
-        self.config_file = os.path.join(self.dir, "config.json")
+        self.config_file = os.path.join(self.dir, "config.yaml")
         # default participant number
         self.part_num = 0
         # phase checker dict; for critical phase and problems with settings
@@ -424,7 +425,7 @@ class Experiment(Window):
     ''' SECTION III: file management methods '''
 
     def get_config_dict(self, config):
-        """Import the configuration file (yaml file) by removing all comments and then return it as a dictionary.
+        """Import the configuration file (yaml file) and return it as a dictionary.
 
         Arguments:
             config {str} -- File name of the python script containing the settings for the experiment
@@ -433,7 +434,7 @@ class Experiment(Window):
             dict -- Dictionary with the experimental parameters (key) and their settings (value)
         """
         # Read YAML file
-        with open("config.yaml", 'r') as file:
+        with open(config, 'r') as file:
             return yaml.safe_load(file)
 
     def check_config(self):
@@ -486,7 +487,7 @@ class Experiment(Window):
         # save self.config in the results directory to validate on later runs that the same settings are being used
         with io.open(self.config_file, 'w', encoding='utf8') as file:
             yaml.dump(self.config, file, default_flow_style=False,
-                      allow_unicode=True)
+                      indent=4, allow_unicode=True)
 
     def read_housekeeping_files(self):
         """Read the file that stores the number of participants tested and, if there are more to test, call the json file check."""
@@ -1251,6 +1252,6 @@ if __name__ == '__main__':
     logging.basicConfig(filename="experiment.log", level=logging.INFO,
                         format="%(asctime)s - %(name)s - %(levelname)-8s - %(funcName)s - %(message)s")
 
-    Exp = Experiment("test.py")
+    Exp = Experiment("test.yaml")
     Exp.start_experiment()
     # print(Exp)
