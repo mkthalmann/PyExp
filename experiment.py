@@ -2,8 +2,8 @@
 
 import datetime
 import glob
-import json
 import logging
+import io
 import os
 import random  # randomize items, and FC options
 import re  # regular expressions
@@ -12,12 +12,12 @@ import smtplib
 import ssl
 import string  # participant id
 import time
-from itertools import cycle
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from io import BytesIO  # linked files
+from itertools import cycle
 from threading import Timer
 from tkinter import *
 from tkinter import messagebox
@@ -73,13 +73,13 @@ class Window():
         self.display_spacer_frame()
 
     def fullscreen(self):
-        """Make the GUI window fullscreen (Escape to return to specified geometry)."""
+        """Make the GUI window fullscreen (Escape to reset to specified geometry)."""
         self.root.geometry(
             f"{self.root.winfo_screenwidth() - 3}x{self.root.winfo_screenheight() - 3}+0+0")
         if self.config["allow_fullscreen_escape"]:
-            self.root.bind('<Escape>', self.return_geometry)
+            self.root.bind('<Escape>', self.reset_geometry)
 
-    def return_geometry(self, event):
+    def reset_geometry(self, event):
         """Return to initially specified geometry from fullscreen."""
         self.root.geometry(self.config["geometry"])
 
@@ -87,7 +87,7 @@ class Window():
 class Experiment(Window):
     """Main class for the experiment. Relies on python file upon instantiation with the settings to be used."""
 
-    # class attribute: core values which need to stay the same over the course of one set of participants
+    # core values which need to stay the same over the course of one set of participants
     config_core = ["experiment_title", "meta_fields", "warm_up", 'non_dynamic_button', "warm_up_file", "use_text_stimuli",
                    "self_paced_reading", "cumulative", "likert", "dynamic_fc", "dynamic_img", "item_file", 'item_number_col',
                    'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options"]
@@ -107,7 +107,7 @@ class Experiment(Window):
         # folder for results, feedback and json
         self.dir = f"{self.config['experiment_title']}_results"
         # one of the housekeeping files
-        self.part_file = f"{self.config['experiment_title']}_participants.txt"
+        self.part_file = os.path.join(self.dir, "participants.txt")
         # second one
         self.config_file = os.path.join(self.dir, "config.json")
         # default participant number
@@ -127,7 +127,7 @@ class Experiment(Window):
         # pandas df which we'll append the item results to
         self.outdf = self.prepare_results_df()
 
-        # all the Tkinter stuff that is not necessary when performing other functions, like plotting or creating Latin squares
+        # all the Tkinter stuff that is not necessary when performing other functions
         if window:
             # set up the main window that'll house all the widgets
             self.root = Tk()
@@ -148,8 +148,7 @@ class Experiment(Window):
             str -- Description of the experiment
         """
         # only show the most important settings (the ones in the class attribute)
-        core_dict = {k: self.config[k] for k in self.config_core}
-        return f"Experiment with the following core settings: {core_dict}"
+        return f"Experiment with the following core settings: { {k: self.config[k] for k in self.config_core} }"
 
     ''' SECTION I: initializing methods for the various phases of the experiment '''
 
@@ -197,6 +196,8 @@ class Experiment(Window):
             self.display_short(self.config["description"])
             # only update the participant number in the critical section
             self.housekeeping_file_update()
+            self.logger.info(
+                f"Participant {self.part_num}/{self.config['participants']} in list {self.item_list_no}")
         else:
             self.items = self.items_warm_up
             self.display_short(self.config["warm_up_title"], 5)
@@ -227,6 +228,7 @@ class Experiment(Window):
                 self.playimage = self.resize_image(
                     os.path.join("media", "play.png"), 100)
                 self.display_audio_stimulus()
+                self.update_play_button()
             # stores the buttons (necessary to resolve the judgment value later)
             self.likert_list = []
             # stores images in dynamic FC exps
@@ -279,7 +281,7 @@ class Experiment(Window):
             side {str} -- Where to pack the resulting frame and label in the root window (default: {"top"})
 
         Returns:
-            frame -- Frame containing the text so that other elements can be added to that same frame
+            Frame -- Frame containing the text so that other elements can be added to that same frame
         """
         # only instantiate frame and label if there's actually text to display
         if text:
@@ -302,7 +304,7 @@ class Experiment(Window):
             font {str} -- Which font to use from the experimental settings; either 'font' or 'font_mono' (default: {'font'})
 
         Returns:
-            label -- Returns the label to that it can be accessed via tkinter's get() method
+            Label -- Returns the label to that it can be accessed via tkinter's get() method
         """
         # only instantiate frame and label if there's actually text to display
         if text:
@@ -354,8 +356,7 @@ class Experiment(Window):
         # submit button which shows the control question
         self.submit_button(self.display_control_questions)
 
-        # NOTE: sometimes when you press the spacebar shortly after the exposition, you get taken back there
-        # a delay helps
+        # delay prevents a bug where pressing the spacebar takes you back to the exposition
         time.sleep(.1)
         # press the space bar to show next word
         self.root.bind('<space>', self.next_word)
@@ -396,7 +397,7 @@ class Experiment(Window):
         self.empty_window()
         self.display_long(self.config["bye_message"], 10, 7)
         self.submit_button(self.on_closing, "Exit")
-        self.logger.info("Experiment has finished.")
+        self.logger.info("Experiment session over.")
 
     def display_spacer_frame(self):
         """Display frame with logo and line that appears at the top of every stage of the experiment."""
@@ -423,7 +424,7 @@ class Experiment(Window):
     ''' SECTION III: file management methods '''
 
     def get_config_dict(self, config):
-        """Import the configuration file (python script) by removing all comments and then return it as a dictionary.
+        """Import the configuration file (yaml file) by removing all comments and then return it as a dictionary.
 
         Arguments:
             config {str} -- File name of the python script containing the settings for the experiment
@@ -431,20 +432,14 @@ class Experiment(Window):
         Returns:
             dict -- Dictionary with the experimental parameters (key) and their settings (value)
         """
-        with open(config, "r") as file:
-            config_list = file.read().splitlines()
-        # remove all comments
-        variable_list = [x.strip().split("#")[0]
-                         for x in config_list if x.strip().split("#")[0]]
-        # add all values to a dictionary
-        config_dict = {key: eval(value)
-                       for (key, value) in [variable.split(" = ") for variable in variable_list]}
-        return config_dict
+        # Read YAML file
+        with open("config.yaml", 'r') as file:
+            return yaml.safe_load(file)
 
     def check_config(self):
         """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
         compare_config = {'fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button', 'dynamic_img', 'google_drive_link',
-                          'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options", 'items_randomize', 'results_file', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
+                          'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options", 'items_randomize', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
         # allow to proceed if the check was passed and all keys are as they should be
         if compare_config == set(self.config.keys()):
             self.logger.info(f"Configuration file is complete.")
@@ -455,11 +450,23 @@ class Experiment(Window):
             self.phases['problem'] = True
 
     def id_generator(self, size=15, chars=string.ascii_lowercase + string.ascii_uppercase + string.digits):
-        """Generate a random participant id and set it as the id_string property."""
+        """Generate a random participant string of character types and return it.
+
+        Keyword Arguments:
+            size {int} -- Length of the string to be generated (default: {15})
+            chars {list} -- List of characters to use for the string (default: {string.ascii_lowercase+string.ascii_uppercase+string.digits})
+
+        Returns:
+            str -- String with random choice from supplied character list of specified length
+        """
         return ''.join(random.choice(chars) for _ in range(size))
 
     def housekeeping(self):
-        """Store and retrieve participant number from file as well as the configuration settings as a json file. Also checks that configuration has not changed between different runs of the same experiment."""
+        """Retrieve participant number from file (or start from zero) and return the item list number for the current participant.
+
+        Returns:
+            int -- Item list number which will define which list (in a Latin Square design) is to be used in the critical phase
+        """
         # check if the results path exists, if it doesn't, create it
         os.makedirs(self.dir, exist_ok=True)
         # read in the participant and the config json files
@@ -477,8 +484,9 @@ class Experiment(Window):
         """Create both the json file that stores the experiment settings."""
         # no need to write a new participant file now, only upon entering the critical section
         # save self.config in the results directory to validate on later runs that the same settings are being used
-        with open(self.config_file, "w", encoding='utf-8') as file:
-            json.dump(self.config, file, ensure_ascii=False, indent=4)
+        with io.open(self.config_file, 'w', encoding='utf8') as file:
+            yaml.dump(self.config, file, default_flow_style=False,
+                      allow_unicode=True)
 
     def read_housekeeping_files(self):
         """Read the file that stores the number of participants tested and, if there are more to test, call the json file check."""
@@ -490,25 +498,28 @@ class Experiment(Window):
 
     def check_housekeeping_files(self):
         """Check if the saved json config file is set to the same parameters as the file used to inititialize the class. Throw a warning if not."""
-        # read in the json file
-        with open(self.config_file, "r") as file:
-            compare_config = json.load(file)
+        # read in the yaml file
+        with open(self.config_file, 'r') as file:
+            compare_config = yaml.safe_load(file)
+
         # compare the json and the new config attribute, halt experiment if they're not the same
         if {k: self.config[k] for k in self.config_core} != {k: compare_config[k] for k in self.config_core}:
             self.logger.warning(
-                f"The configurations for the currently running experiment have changed from previous participants.\nCheck the config file or start a new experiment (e.g. by changing the experiment title) to proceed\nConfig dict: { {k: self.config[k] for k in self.config_core} }\nCompare dict: { {k: compare_config[k] for k in self.config_core} }")
+                f"Configurations for the current experiment session have changed from previous participants.\nCheck the config file or start a new experiment to proceed\Current dict: { {k: self.config[k] for k in self.config_core} }\Previous dict: { {k: compare_config[k] for k in self.config_core} }")
             # stop the display of other elements
             self.phases["problem"] = True
 
-    def housekeeping_file_update(self):
-        """Increase the participant number and write it to the participants housekeeping file."""
+    def housekeeping_file_update(self, increment=1):
+        """Update the participant number and write it to the participants housekeeping file.
+
+        Keyword Arguments:
+            increment {int} -- Number by which to modifiy the participant number; use negative numbers to reduce the participants (default: {1})
+        """
         # increase participant number
-        self.part_num += 1
+        self.part_num += increment
         # write participant number to the housekeeping file
         with open(self.part_file, 'w') as file:
             file.write(str(self.part_num))
-        self.logger.info(
-            f"Participant {self.part_num}/{self.config['participants']} in list {self.item_list_no}")
 
     def retrieve_items(self, filename):
         """Retrieve the items from the specified item file and randomize their order if specified, return a pandas DF.
@@ -517,7 +528,7 @@ class Experiment(Window):
             filename {str} -- File that contains the items in a table-like format
 
         Returns:
-            df -- pandas DF with all the item info
+            df -- pandas DF with all the item info or None if warm-up file is passed and no warm-up is planned
         """
         # with critical items
         if filename == self.config["item_file"]:
@@ -554,11 +565,11 @@ class Experiment(Window):
     def prepare_results_df(self):
         """Initialize the results df with appropriate header depending on the experiment. Set the df as outdf."""
         # outfile in new folder with id number attached
-        name = f"{self.config['results_file']}_{str(self.part_num).zfill(len(str(self.config['participants'])))}_{self.id_string}{self.config['results_file_extension']}"
+        name = f"result_{str(self.part_num).zfill(len(str(self.config['participants'])))}{self.config['results_file_extension']}"
         # system independent path to file in results directory
         self.outfile = os.path.join(self.dir, name)
         # generate a list with the header names for the results df
-        header_list = ["id", "date", "start_time", "tester",
+        header_list = ["id", "date", "start_time", "experimenter",
                        self.config["meta_fields"], "sub_exp", "item", "cond"]
         # for standard judgment experiments (either text or audio)
         if self.config["self_paced_reading"]:
@@ -600,9 +611,7 @@ class Experiment(Window):
         # if specified by user, do not save unfinished participant results (according to the given ratio)
         if all([self.config["remove_unfinished"], self.i_ix < len(self.items) * self.config["remove_ratio"]]):
             # also reduce the participant number in the housekeeping file
-            self.part_num -= 1
-            with open(self.part_file, 'w') as file:
-                file.write(str(self.part_num))
+            self.housekeeping_file_update(-1)
             self.logger.info("Participant won't increase participant count.")
         # if not specified, save the dataframe
         else:
@@ -616,7 +625,7 @@ class Experiment(Window):
         """Add three columns to the results df: experiment duration, experiment finished, and feedback."""
         # compute experiment duration in minutes
         duration = round((time.time() - self.exp_start)/60, 2)
-        # whether the experiment was finished or not
+        # whether the experiment was finished or not ('T' or 'F')
         finished = str(not self.phases['critical'])[0]
         # feedback or number of items completed
         feedback = self.feedback.get(
@@ -655,13 +664,12 @@ class Experiment(Window):
             save_file {bool} -- Whether to save the file; just return df if False (default: {True})
 
         Returns:
-            df -- pandas DataFrame containing all the merged results
+            tuple -- (path to the newly saved file, DF)
         """
-        outfile = f"{self.config['experiment_title']}_results_full{self.config['results_file_extension']}"
-        # Get results files
-        results_files = sorted(
-            glob.glob(os.path.join(
-                self.dir, f'*{self.config["results_file_extension"]}')))
+        outfile = f"{self.config['experiment_title']}_results{self.config['results_file_extension']}"
+        # Get results files from results directory
+        results_files = glob.glob(os.path.join(
+            self.dir, f'*{self.config["results_file_extension"]}'))
 
         # read in all the individual result files and concatenate them length-wise
         df_all = pd.concat([self.read_multi_ext(x) for x in results_files])
@@ -669,9 +677,9 @@ class Experiment(Window):
         if save_file:
             self.save_multi_ext(df_all, outfile)
             self.logger.info(
-                f"Merged results file with {len(results_files)} input files generated: {outfile}")
+                f"Merged file with {len(results_files)} inputs saved: {outfile}")
 
-        return df_all
+        return (outfile, df_all)
 
     def read_multi_ext(self, file):
         """Read csv, xlsx, and txt files and returns a pandas DataFrame.
@@ -821,8 +829,7 @@ class Experiment(Window):
         message.attach(MIMEText(body, "plain"))
 
         # merged results
-        self.merge_all_results(save_file=True)
-        filename = f"{self.config['experiment_title']}_results_full{self.config['results_file_extension']}"
+        filename = self.merge_all_results(save_file=True)[0]
 
         # Open file in binary mode
         with open(filename, "rb") as attachment:
@@ -865,8 +872,8 @@ class Experiment(Window):
             likert_append {bool} -- Whether to add the buttons to the likert list and disable them
         """
         # generate and place a button
-        x = Radiobutton(self.frame_judg, image=image, text=text, variable=self.judgment, value=value, font=(
-            self.config["font"], self.config["basesize"]))
+        x = Radiobutton(self.frame_judg, image=image, text=text, variable=self.judgment,
+                        value=value, font=(self.config["font"], self.config["basesize"]))
         x.pack(side=side, expand=True, padx=10)
         # option below used for spr controls and non-dynamic buttons in dynamic FC
         if likert_append:
@@ -883,16 +890,13 @@ class Experiment(Window):
         # get the Forced Choice options from the item file (either txt or img)
         if any([self.config["dynamic_fc"], self.config["dynamic_img"]]):
             self.dynamic_fc_buttons()
-
         # simply display the static likert buttons
         else:
             self.likert_style_buttons()
 
         if all([self.config["use_text_stimuli"], not self.config["self_paced_reading"]]):
             # enable likert choice after specified delay is over
-            read_timer = Timer(
-                self.config["delay_judgment"], self.enable_submit)
-            read_timer.start()
+            Timer(self.config["delay_judgment"], self.enable_submit).start()
 
     def likert_style_buttons(self):
         """Display likert style radio buttons, optionally with endpoints. Also used for (static) Forced Choice."""
@@ -941,7 +945,6 @@ class Experiment(Window):
         Keyword Arguments:
             text {str} -- Text to be displayed on the button; if None, value will be taken from the config file (default: {None})
         """
-        # if no other text argument is passed, use the text in the configuration file
         # display a line
         spacer_line = Frame(self.root, height=2, width=800, bg="gray90")
         spacer_line.pack(side="top", anchor="c", pady=20)
@@ -956,7 +959,11 @@ class Experiment(Window):
     ''' SECTION V: methods that are called upon button or keyboard presses '''
 
     def create_masked_item(self):
-        """Take item and mask letters and words with underscores, depending on word counter."""
+        """Take item and mask words with underscores, depending on word counter. Return new string.
+
+        Returns:
+            str -- Masked item string
+        """
         # replace all non-whitespace characters with underscores
         self.masked = re.sub("[^ ]", "_", self.items.iloc[self.i_ix, 0])
         # generate a list from the strings to be able to manipulate it
@@ -981,8 +988,15 @@ class Experiment(Window):
         return " ".join(masked_split)
 
     def play_stimulus(self):
-        """Play the file from the item list; either locally or via streaming it from the online source."""
-        # check if the item is a link, if yes retrieve it
+        """Play the file from the item list; either locally or via streaming it from an online source."""
+        # start time we need for audio stimuli reaction time
+        self.time_start = time.time()
+        # play file
+        self.sound.play()
+        # after sound is over, change the value of played
+        Timer(self.sound.get_length(), self.enable_submit).start()
+
+    def update_play_button(self):
         if "https://" in self.items.iloc[self.i_ix, 0]:
             # google drive export link conversion to usable link for playback
             if self.config["google_drive_link"]:
@@ -991,23 +1005,18 @@ class Experiment(Window):
                 url = BytesIO(urlopen(url).read())
             # for others, just use the link in the item file
             else:
-                url = BytesIO(urlopen(self.items.iloc[self.i_ix, 0]).read())
+                url = BytesIO(
+                    urlopen(self.items.iloc[self.i_ix, 0]).read())
             self.sound = pygame.mixer.Sound(url)
         else:
             # load file into mixer
             self.sound = pygame.mixer.Sound(self.items.iloc[self.i_ix, 0])
-        # start time we need for audio stimuli reaction time
-        self.time_start = time.time()
-        # play file
-        self.sound.play()
-        # after sound is over, change the value of played
-        played_sound_timer = Timer(self.sound.get_length(), self.enable_submit)
-        played_sound_timer.start()
 
     def submit_participant_information(self):
         """Save all the meta fields to a list if all are filled out or display an error. On success, move on to exposition."""
         # store the entries of the fields in the final attribute
-        meta_entries_temp = [x.get() for x in self.meta_entries]
+        meta_entries_temp = [x.get().casefold().strip()
+                             for x in self.meta_entries]
         # if any of the fields are empty, print out an error message
         if "" in meta_entries_temp:
             self.display_error(self.config["error_meta"])
@@ -1084,7 +1093,11 @@ class Experiment(Window):
             if self.config["use_text_stimuli"]:
                 self.next_text_item()
             else:
+                # update the play button and start streaming non-local files
+                self.update_play_button()
+                # disable buttons and play play button
                 self.next_audio_item()
+            # with dynamic experiment designs, update the judgment options
             if any([self.config["dynamic_fc"], self.config["dynamic_img"]]):
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
@@ -1124,15 +1137,12 @@ class Experiment(Window):
         else:
             out_l = out_l + [self.judgment.get(), str(round(reaction_time, 5))]
         # flatten list of lists; turn to string, remove capital letters and add rows to pandas df
-        out_l = [str(item).casefold()
-                 for item in pd.core.common.flatten(out_l)]
-        self.outdf.loc[len(self.outdf)] = out_l
+        self.outdf.loc[len(self.outdf)] = [str(item).casefold()
+                                           for item in pd.core.common.flatten(out_l)]
 
     def next_self_paced_reading_item(self):
         """Shows the next item in self-paced reading experiment, calls functions to save reaction times and judgments. At the end of item list, moves on to either critical section (if currently in warm-up) or the feedback section."""
         self.logger.info(f"Item {self.i_ix + 1}/{len(self.items)}!")
-
-        self.submit.config(state="disabled")
         self.save_dependent_measures()
         self.i_ix += 1
 
@@ -1146,6 +1156,7 @@ class Experiment(Window):
             # and go back to the masked item frame
             self.empty_window()
             self.display_masked_item()
+            self.submit.config(state="disabled")
         # otherwise either go to the feedback section or enter the critical stage of the exp
         except IndexError as e:
             self.logger.info(f"No more items to show: {e}")
@@ -1159,9 +1170,7 @@ class Experiment(Window):
         # disable the submit button as well
         self.submit.config(state="disabled")
         # start the timer for reactivation
-        read_item_timer = Timer(
-            self.config["delay_judgment"], self.enable_submit)
-        read_item_timer.start()
+        Timer(self.config["delay_judgment"], self.enable_submit).start()
         # show new item
         self.item_text.config(
             text=self.items.iloc[self.i_ix, 0])
@@ -1169,6 +1178,7 @@ class Experiment(Window):
     def next_audio_item(self):
         """Disable the judgment and submit buttons and flash the play button."""
         # because the play button will automatically update itself to play the new item (bc of the item_num), we only need to disable the button for audio stimuli
+        # check if the item is a link, if yes retrieve it
         self.submit.config(state="disabled")
         for obj in self.likert_list:
             obj.config(state="disabled")
@@ -1232,11 +1242,9 @@ class Experiment(Window):
         if messagebox.askokcancel("Quit", self.config["quit_warning"]):
             self.root.destroy()
             # if ended before intended ending, log that and handle results and feedback file
+            self.logger.info("Experiment was quit.")
             if self.phases["critical"]:
-                self.logger.warning("Critical section was quit manually.")
                 self.unfinished_participant_results()
-            else:
-                self.logger.info("Experiment quit outside the critical part.")
 
 
 if __name__ == '__main__':
