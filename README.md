@@ -1,4 +1,4 @@
-# PyExp# PyExp# PyExp &mdash; Linguistic Experiments using tkinter and Python 3
+# PyExp &mdash; Linguistic Experiments using tkinter and Python 3
 
 This is one of my ongoing side projects: an experiment script with Python 3 using tkinter. The scope of this effort is fairly limited for now:
 
