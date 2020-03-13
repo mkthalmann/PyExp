@@ -1,4 +1,21 @@
-# general
+##%######################################################%##
+#                                                          #
+####              PyExp Configuration File              ####
+#                           %                              #
+####               Maik Thalmann -- 2020                ####
+#                                                          #
+##%######################################################%##
+
+# This file contains all the necessary (or, at the very least, modifiable)
+# settings for the initialzation of your experiment
+# Before proceeding with any study, please make sure that you have read
+# and adapted all the parameters to your liking as changing them after
+# already having started testing people is only possible with minor settings
+
+# Feel free to send me an email if you have any questions:
+# maik.thalmann@gmail.com
+
+# --- GENERAL SETTINGS --- #
 fullscreen: True
 allow_fullscreen_escape: False
 # default main window size in pixels (width x height); only for when fullscreen escape is allowed
@@ -17,7 +34,7 @@ tester: tester
 
 logo: media/logo.png
 
-# meta data
+# --- META DATA --- #
 meta_instruction: Please fill out all the fields below
 meta_fields:
   - Age
@@ -25,10 +42,10 @@ meta_fields:
   - Language
   - Major
 
-# exposition
+# --- EXPOSITION PHASE --- #
 expo_text: "Liebe/r Teilnehmer/In,\n\nim Folgenden werden wir Ihnen einige Sätze des Deutschen zeigen. Wir möchten Sie bitten, diese aufmerksam durchzulesen und im Anschluss in eine von vier verschiedenen Kategorien einzuordnen. Dabei wird es darum gehen, die im Satz präsentierte Handlung mithilfe der vier Auswahlmöglichkeiten genauer zu beschreiben.\n\n\nViel Spaß und herzlichen Dank für Ihre Teilnahme!"
 
-# warm up section
+# --- WARM-UP PHASE --- #
 warm_up: False
 # leave as empty string to disable
 warm_up_title: This is a familiarization phase.
@@ -37,7 +54,7 @@ warm_up_description: Please do as you're told so won't fuck up my experiment.
 # uses item_file_extension: .csv; .txt; .xlsx
 warm_up_file: items/warm_up # warm_up_audio/warm_up
 
-# critical section
+# --- CRITICAL PHASE --- #
 use_text_stimuli: True
 # self-paced reading instead of judgments
 self_paced_reading: False
@@ -58,7 +75,6 @@ likert:
 endpoints:
   - (horrid)
   - (splendid)
-
 # option to retrieve the judgment/fc options from the item file for each item separately; will overwrite whatever is specified in likert list above
 # does not work with self-paced reading, but with traditional text and audio stimuli
 # order will be randomized
@@ -73,26 +89,21 @@ dynamic_img: False
 google_drive_link: False
 # additional button that will be shown in addition to the dynamic options, generally a rejection option, leave as "" to disable
 non_dynamic_button: ""
-
 # disable both the submit and likert scale buttons for a number of seconds to encourage people to actually read the item (0 to disable)
 # this will not feature in the reaction times of course
 delay_judgment: 1
-
 # number of participants to be tested
 participants: 100
-
 # delete results file of participants who did not complete the experiment
 remove_unfinished: False
 # threshold underneath of which the results file will be deleted
 remove_ratio: .75
-
 # item file
 # assumes file with suffix containing the number of the list: "complete_list1.xlsx")
 item_lists: 2 # with 4, you should have four lists: $list1, $list2, $list3, $list4
 # complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
 item_file: items/complete_dynamic
 item_file_extension: .xlsx # .csv; .txt; .xlsx
-
 # column names in item file
 # column that are not mentioned here will not feature in the experiment
 item_number_col: item_number
@@ -108,27 +119,27 @@ spr_control_options:
   - "yes"
   - "no"
 
+# whether to randomize the items in the critical section
 items_randomize: True
-
 # what to save the results as
 results_file_extension: .csv # .csv; .txt; .xlsx
 
-# feedback section
+# --- FEEDBACK PHASE --- #
 # leave empty to not have a feedback section at the end of the exp
 feedback: "Feedback test\nWhat would you like to tell me?"
 
-# button text
+# --- BUTTON TEXTS --- #
 audio_button_text: Play Item
 button_text: Continue
 
-# messages and errors
+# --- MESSAGES AND ERRORS --- #
 finished_message: Thank you for your interest in participating in the study. Unfortunately, all slots have already been filled.
 bye_message: "THANK YOU! The experiment is finished, you can exit the window now. \nOnce again, we truly appreciate your assistance."
 quit_warning: "Are you absolutely sure you want to quit the Experiment?\n\nYou will not be able to restart it again from where you left off."
 error_judgment: Make a selection, please!
 error_meta: Fill out all fields, please!
 
-# font setup
+# --- FONT SETUP --- #
 font: Roboto Condensed
 font_mono: Source Code Pro # only used in self-paced-reading
 basesize: 25
