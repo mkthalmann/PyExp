@@ -42,9 +42,6 @@ from PIL import Image, ImageTk
 class Window:
     """General class that harbors some methods for window handling, like centering or resizing operations."""
 
-    def __init__(self):
-        pass
-
     def center_window(self):
         """Center a GUI window."""
         # Call all pending idle tasks - carry out geometry management and redraw widgets.
@@ -123,7 +120,7 @@ class Experiment(Window):
         self.logger = logging.getLogger(__name__)
         # load the settings from the configation file
         self.config = self.get_config_dict(config)
-        # folder for results, feedback and json
+        # folder for results, feedback and yaml
         self.dir = f"{self.config['experiment_title']}_results"
         # one of the housekeeping files
         self.part_file = os.path.join(self.dir, "participants.txt")
@@ -132,7 +129,7 @@ class Experiment(Window):
         # default participant number
         self.part_num = 0
         # phase checker dict; for critical phase and problems with settings
-        self.phases = dict.fromkeys(["critical", "problem"], False)
+        self.phases = dict.fromkeys(["critical"], False)
         # check that all settings are present
         self.check_config()
         # assign the item list (for the critical items)
@@ -153,8 +150,7 @@ class Experiment(Window):
             # add title, geometry, centering etc
             self.setup_gui()
             # get the logo file and resize it
-            # FIXME: this should actually resize to desired height, not desired width
-            self.logo = self.resize_image(self.config["logo"], 100)
+            self.logo = self.resize_image(self.config["logo"], 90)
 
         # time of testing
         self.exp_start = time.time()  # to track eperiment duration
@@ -179,17 +175,11 @@ class Experiment(Window):
         if self.part_num == self.config["participants"]:
             self.experiment_finished()
         else:
-            # if there was a problem with the housekeeping files, show error message
-            if self.phases["problem"]:
-                self.display_long(
-                    f"You edited some settings or there is some other problem.\nThe experiment cannot proceed. Check the log file."
-                )
-            else:
-                # store for meta data
-                self.meta_entries = []
-                # show the intro text and the forms
-                self.display_meta_information_forms()
-                self.submit_button(self.submit_participant_information)
+            # store for meta data
+            self.meta_entries = []
+            # show the intro text and the forms
+            self.display_meta_information_forms()
+            self.submit_button(self.submit_participant_information)
         self.root.mainloop()
 
     def start_exposition_phase(self):
@@ -219,6 +209,12 @@ class Experiment(Window):
                 f"Participant {self.part_num}/{self.config['participants']} in list {self.item_list_no}"
             )
         else:
+            # make sure item numbers and subexps between warm-up and critical do not overlap
+            assert (
+                not self.items_critical[self.config["sub_exp_col"]]
+                .eq(self.items_warm_up[self.config["sub_exp_col"]])
+                .any()
+            ), "Sub-experiment values between warm-up and critical items overlap."
             self.items = self.items_warm_up
             self.display_short(self.config["warm_up_title"], 5)
             self.display_short(self.config["warm_up_description"])
@@ -484,7 +480,7 @@ class Experiment(Window):
             return yaml.safe_load(file)
 
     def check_config(self):
-        """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
+        """Check that the configuration file has not been modified from what is expected in the application."""
         compare_config = {
             "fullscreen",
             "allow_fullscreen_escape",
@@ -539,15 +535,10 @@ class Experiment(Window):
             "font_mono",
             "basesize",
         }
-        # allow to proceed if the check was passed and all keys are as they should be
-        if compare_config == set(self.config.keys()):
-            self.logger.info(f"Configuration file is complete.")
-        # stop the experiment from proceeding
-        else:
-            self.logger.warning(
-                f"These entries are either missing from the config file or have been added to it: {compare_config^set(self.config.keys())}"
-            )
-            self.phases["problem"] = True
+        # check if all keys are as they should be
+        assert compare_config == set(
+            self.config.keys()
+        ), f"These entries are either missing from the config file or have been added to it: {compare_config^set(self.config.keys())}"
 
     def id_generator(
         self,
@@ -558,7 +549,7 @@ class Experiment(Window):
 
         Keyword Arguments:
             size {int} -- Length of the string to be generated (default: {15})
-            chars {list} -- List of characters to use for the string (default: {string.ascii_lowercase+string.ascii_uppercase+string.digits})
+            chars {str} -- List of characters to use for the string (default: {string.ascii_lowercase + string.ascii_uppercase + string.digits})
 
         Returns:
             str -- String with random choice from supplied character list of specified length
@@ -573,7 +564,7 @@ class Experiment(Window):
         """
         # check if the results path exists, if it doesn't, create it
         os.makedirs(self.dir, exist_ok=True)
-        # read in the participant and the config json files
+        # read in the participant and the config yaml files
         try:
             self.read_housekeeping_files()
         # if they can't be found (because its a new experiment), create them
@@ -582,11 +573,16 @@ class Experiment(Window):
             self.logger.info(
                 f"Housekeeping file '{self.part_file}' not found, creating one: {e}"
             )
+        all_item_lists = glob.glob(f"{self.config['item_file']}[0-9]*")
+        # check that all item lists have the same number of rows and columns
+        assert (
+            len(set([self.read_multi_ext(x).shape for x in all_item_lists])) == 1
+        ), f"Item lists {self.config['item_file']} differ in number of rows/columns."
         # assign participant to an item list (using the modulo method for latin square); where glob.glob just finds all item lists
-        return self.part_num % len(glob.glob(f"{self.config['item_file']}[0-9]*")) + 1
+        return self.part_num % len(all_item_lists) + 1
 
     def create_housekeeping_files(self):
-        """Create both the json file that stores the experiment settings."""
+        """Create the yaml file that stores the experiment settings."""
         # no need to write a new participant file now, only upon entering the critical section
         # save self.config in the results directory to validate on later runs that the same settings are being used
         with io.open(self.config_file, "w", encoding="utf8") as file:
@@ -599,28 +595,23 @@ class Experiment(Window):
             )
 
     def read_housekeeping_files(self):
-        """Read the file that stores the number of participants tested and, if there are more to test, call the json file check."""
+        """Read the file that stores the number of participants tested and, if there are more to test, call the yaml file check."""
         # read in the participant file
         with open(self.part_file, "r") as file:
             self.part_num = int(file.read())
-        # next step: check the json file
+        # next step: check the yaml file
         self.check_housekeeping_files()
 
     def check_housekeeping_files(self):
-        """Check if the saved json config file is set to the same parameters as the file used to inititialize the class. Throw a warning if not."""
+        """Check if the saved yaml config file is set to the same parameters as the file used to inititialize the class. Throw a warning if not."""
         # read in the yaml file
         with open(self.config_file, "r") as file:
             compare_config = yaml.safe_load(file)
 
-        # compare the json and the new config attribute, halt experiment if they're not the same
-        if {k: self.config[k] for k in self.config_core} != {
+        # compare the yaml and the new config attribute, halt experiment if they're not the same
+        assert {k: self.config[k] for k in self.config_core} == {
             k: compare_config[k] for k in self.config_core
-        }:
-            self.logger.warning(
-                f"Configurations for the current experiment session have changed from previous participants.\nCheck the config file or start a new experiment to proceed\Current dict: { {k: self.config[k] for k in self.config_core} }\Previous dict: { {k: compare_config[k] for k in self.config_core} }"
-            )
-            # stop the display of other elements
-            self.phases["problem"] = True
+        }, f"Configurations for the current experiment session have changed from previous participants.\nCheck the config file or start a new experiment to proceed\Current dict: { {k: self.config[k] for k in self.config_core} }\Previous dict: { {k: compare_config[k] for k in self.config_core} }"
 
     def housekeeping_file_update(self, increment=1):
         """Update the participant number and write it to the participants housekeeping file.
@@ -633,6 +624,22 @@ class Experiment(Window):
         # write participant number to the housekeeping file
         with open(self.part_file, "w") as file:
             file.write(str(self.part_num))
+
+    def check_items(self, infile, df):
+        """Check that the item list to be used for the experiment passes a number of checks.
+        
+        Arguments:
+            infile {str} -- Path to the file for logging purposes
+            df {DataFrame} -- pandas DataFrame to check
+        """
+        # there are no missing values
+        assert df.notnull().all().all(), f"Missing values in {infile}."
+        # there are no duplicated rows in the dataset:
+        assert ~df.duplicated().any(), f"Duplicated rows in {infile}."
+        # items do not occur more than once per subexp:
+        assert ~df.duplicated(
+            subset=[self.config["sub_exp_col"], self.config["item_number_col"]]
+        ).any(), f"Some item numbers used multiple times per sub-exp in {infile}."
 
     def retrieve_items(self, filename):
         """Retrieve the items from the specified item file and randomize their order if specified, return a pandas DF.
@@ -677,6 +684,8 @@ class Experiment(Window):
         try:
             # try to rearrange the columns and remove all non-mentioned columns in the file; using filter remove remove empty entries
             df_items = df_items[filter(None, columns_to_order)]
+            # perform some checks for the item lists to see if they are likely to work for the experiment
+            self.check_items(infile, df_items)
             # assign the df as a instance property
             return df_items
         # if some of the columns aren't present, log them
@@ -718,7 +727,7 @@ class Experiment(Window):
         # initilize the results df
         return pd.DataFrame(columns=header_list)
 
-    def resize_image(self, x, desired_width=250):
+    def resize_image(self, x, desired_height=150):
         """Resize and return images as Tkinter-useable objects.
 
         Arguments:
@@ -733,8 +742,8 @@ class Experiment(Window):
         image = Image.open(x)
         # compute rescaled dimensions
         new_dimensions = (
-            int(image.width / (image.width / desired_width)),
-            int(image.height / (image.width / desired_width)),
+            int(image.width / (image.height / desired_height)),
+            int(image.height / (image.height / desired_height)),
         )
         # resize the image to the desired dims
         image = image.resize(new_dimensions, Image.ANTIALIAS)
@@ -760,6 +769,7 @@ class Experiment(Window):
             # save the results file and log it
             self.save_multi_ext(self.outdf, self.outfile)
             self.logger.info(f"Unfinished participant will be counted.")
+        # TODO: add a test that checks whether the df is as long as the current item index
 
     def append_metrics(self):
         """Add three columns to the results df: experiment duration, experiment finished, and feedback."""
@@ -793,7 +803,7 @@ class Experiment(Window):
             self.logger.warning(f"File does not exist: {file}; {e}")
 
     def delete_all_results(self):
-        """Delete both the results directory (including configuration json and feedback file) as well as the participants housekeeping file."""
+        """Delete both the results directory (including configuration yaml and feedback file) as well as the participants housekeeping file."""
         for x in [self.dir, self.part_file]:
             self.delete_file(x)
 
@@ -896,18 +906,9 @@ class Experiment(Window):
             for item, cond in products
         ]
         # if they are not all there, raise an error and show which combos are missing
-        if not all(check_list):
-            # get missing combinations
-            missing_combos = ", ".join(
-                [
-                    "".join(map(str, product))
-                    for product, boolean in zip(products, check_list)
-                    if not boolean
-                ]
-            )
-            raise Exception(
-                f"Not all permutations of items and conditions are present in the dataframe. Missing combinations: {missing_combos}"
-            )
+        assert all(
+            check_list
+        ), f"Not all permutations of items and conditions present in the dataframe: {[''.join(map(str, product)) for product, boolean in zip(products, check_list) if not boolean]}"
 
     def to_latin_square(
         self,
@@ -1423,6 +1424,7 @@ class Experiment(Window):
         self.save_multi_ext(self.outdf, self.outfile)
         self.logger.info(f"Results file saved: {self.outfile}")
         self.display_over()
+        # TODO: add a test that checks that the df has as many rows as the item list and is as long as the current item index
 
     def enable_submit(self):
         """Unlock disabled submit buttons, either after a timer or after an event (like the audio finishing to play) has occurred."""

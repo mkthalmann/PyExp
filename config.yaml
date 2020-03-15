@@ -101,6 +101,10 @@ remove_ratio: .75
 # item file
 # assumes file with suffix containing the number of the list: "complete_list1.xlsx")
 # complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
+# checks that are performed over the item list which have to be passed:
+# (i) there are no missing values
+# (ii) there are no duplicated rows in the dataset
+# (iii) items do not occur more than once per subexp
 item_file: items/complete_dynamic
 item_file_extension: .xlsx # .csv; .txt; .xlsx
 # column names in item file
