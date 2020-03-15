@@ -35,7 +35,7 @@ from PIL import Image, ImageTk
     - option to have several experimental blocks with a break inbetween
 
     FIXME:
-    -
+    - 
 '''
 
 
@@ -440,7 +440,7 @@ class Experiment(Window):
     def check_config(self):
         """Check that the configuration file has not been modified from what is expected in the application and return boolean."""
         compare_config = {'fullscreen', 'allow_fullscreen_escape', 'geometry', 'window_title', 'experiment_title', 'confirm_completion', 'receiver_email', 'tester', 'logo', 'meta_instruction', 'meta_fields', 'expo_text', 'warm_up', 'warm_up_title', 'warm_up_description', 'warm_up_file', 'use_text_stimuli', 'self_paced_reading', 'cumulative', 'title', 'description', 'likert', 'endpoints', 'dynamic_fc', 'non_dynamic_button', 'dynamic_img', 'google_drive_link',
-                          'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_lists', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options", 'items_randomize', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
+                          'delay_judgment', 'participants', 'remove_unfinished', 'remove_ratio', 'item_file', 'item_file_extension', 'item_number_col', 'item_or_file_col', 'sub_exp_col', 'cond_col', 'extra_cols', "spr_control_options", 'items_randomize', 'results_file_extension', 'feedback', 'audio_button_text', 'button_text', 'finished_message', 'bye_message', 'quit_warning', 'error_judgment', 'error_meta', 'font', 'font_mono', 'basesize'}
         # allow to proceed if the check was passed and all keys are as they should be
         if compare_config == set(self.config.keys()):
             self.logger.info(f"Configuration file is complete.")
@@ -478,8 +478,8 @@ class Experiment(Window):
             self.create_housekeeping_files()
             self.logger.info(
                 f"Housekeeping file '{self.part_file}' not found, creating one: {e}")
-        # assign participant to an item list (using the modulo method for latin square)
-        return self.part_num % self.config["item_lists"] + 1
+        # assign participant to an item list (using the modulo method for latin square); where glob.glob just finds all item lists
+        return self.part_num % len(glob.glob(f"{self.config['item_file']}[0-9]*")) + 1
 
     def create_housekeeping_files(self):
         """Create both the json file that stores the experiment settings."""
@@ -555,8 +555,8 @@ class Experiment(Window):
         columns_to_order = list(pd.core.common.flatten([self.config['item_or_file_col'], self.config['sub_exp_col'],
                                                         self.config['item_number_col'], self.config['cond_col'], self.config['extra_cols']]))
         try:
-            # try to rearrange the columns and remove all non-mentioned columns in the file
-            df_items = df_items[columns_to_order]
+            # try to rearrange the columns and remove all non-mentioned columns in the file; using filter remove remove none
+            df_items = df_items[filter(None, columns_to_order)]
             # assign the df as a instance property
             return df_items
         # if some of the columns aren't present, log them

@@ -100,7 +100,6 @@ remove_unfinished: False
 remove_ratio: .75
 # item file
 # assumes file with suffix containing the number of the list: "complete_list1.xlsx")
-item_lists: 2 # with 4, you should have four lists: $list1, $list2, $list3, $list4
 # complete_list; complete_audio; complete_spr; complete_dynamic; complete_image; complete_image_jpg; complete_audio_url; complete_audio_url_gd
 item_file: items/complete_dynamic
 item_file_extension: .xlsx # .csv; .txt; .xlsx
