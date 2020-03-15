@@ -5,7 +5,7 @@ movies.py
 movies_tk.py
 *_storage.txt
 *_participants.txt
-*_results_full.csv
+*_results.csv
 *_results
 .pre_pandas
 maintainability
