@@ -15,7 +15,10 @@ This is one of my ongoing side projects: an experiment script with Python 3 usin
 
 ## What It Looks Like
 
-![meta](media/sample.jpg)
+<p align="center">
+<img src="https://github.com/mkthalmann/PyExp/blob/master/media/sample.jpg" width="532" height="278">
+</p>
+
 
 ## Getting Started
 
