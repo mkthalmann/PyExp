@@ -39,6 +39,18 @@ from PIL import Image, ImageTk
 """
 
 
+class HouseKeepingError(Exception):
+    """Raise when housekeeping checks are not passed, e.g. when not all expected entries are present."""
+
+    pass
+
+
+class ItemFileError(Exception):
+    """Raise when the item file is not usable for the Experiment class, e.g. when it contains missing entries."""
+
+    pass
+
+
 class Window:
     """General class that harbors some methods for window handling, like centering or resizing operations."""
 
@@ -128,8 +140,8 @@ class Experiment(Window):
         self.config_file = os.path.join(self.dir, "config.yaml")
         # default participant number
         self.part_num = 0
-        # phase checker dict; for critical phase and problems with settings
-        self.phases = dict.fromkeys(["critical"], False)
+        # phase checker
+        self.critical = False
         # check that all settings are present
         self.check_config()
         # assign the item list (for the critical items)
@@ -199,7 +211,7 @@ class Experiment(Window):
         self.logger.info(f"Starting {'critical' if critical else 'warm-up'} phase.")
         # assign different item lists depending on the phase of the experiment
         if critical:
-            self.phases["critical"] = True
+            self.critical = True
             self.items = self.items_critical
             self.display_short(self.config["title"], 5)
             self.display_short(self.config["description"])
@@ -210,11 +222,14 @@ class Experiment(Window):
             )
         else:
             # make sure item numbers and subexps between warm-up and critical do not overlap
-            assert (
-                not self.items_critical[self.config["sub_exp_col"]]
-                .eq(self.items_warm_up[self.config["sub_exp_col"]])
-                .any()
-            ), "Sub-experiment values between warm-up and critical items overlap."
+            test.test_that(
+                (
+                    not self.items_critical[self.config["sub_exp_col"]]
+                    .eq(self.items_warm_up[self.config["sub_exp_col"]])
+                    .any()
+                ),
+                "Sub-experiment values between warm-up and critical items overlap.",
+            )
             self.items = self.items_warm_up
             self.display_short(self.config["warm_up_title"], 5)
             self.display_short(self.config["warm_up_description"])
@@ -466,6 +481,24 @@ class Experiment(Window):
 
     """ SECTION III: file management methods """
 
+    def test_that(self, condition, text, error=ItemFileError):
+        """Test whether a condition holds and raises an Exception if that is not the case.
+        
+        Arguments:
+            condition {bool} -- Condition to be tested
+            text {str} -- Error message that will be logged and re-raised if the test fails 
+            error {Exception} -- Exception to be raised if test fails
+        
+        Raises:
+            error: Some Exception that was passed as an argument
+        """
+        try:
+            if not condition:
+                raise error(text)
+        except error as e:
+            self.logger.error(e)
+            raise
+
     def get_config_dict(self, config):
         """Import the configuration file (yaml file) and return it as a dictionary.
 
@@ -536,9 +569,11 @@ class Experiment(Window):
             "basesize",
         }
         # check if all keys are as they should be
-        assert compare_config == set(
-            self.config.keys()
-        ), f"These entries are either missing from the config file or have been added to it: {compare_config^set(self.config.keys())}"
+        self.test_that(
+            compare_config == set(self.config.keys()),
+            f"These entries are either missing from the config file or have been added to it: {compare_config^set(self.config.keys())}",
+            HouseKeepingError,
+        )
 
     def id_generator(
         self,
@@ -575,9 +610,10 @@ class Experiment(Window):
             )
         all_item_lists = glob.glob(f"{self.config['item_file']}[0-9]*")
         # check that all item lists have the same number of rows and columns
-        assert (
-            len(set([self.read_multi_ext(x).shape for x in all_item_lists])) == 1
-        ), f"Item lists {self.config['item_file']} differ in number of rows/columns."
+        self.test_that(
+            len(set([self.read_multi_ext(x).shape for x in all_item_lists])) == 1,
+            f"Item lists {self.config['item_file']} differ in number of rows/columns.",
+        )
         # assign participant to an item list (using the modulo method for latin square); where glob.glob just finds all item lists
         return self.part_num % len(all_item_lists) + 1
 
@@ -609,9 +645,12 @@ class Experiment(Window):
             compare_config = yaml.safe_load(file)
 
         # compare the yaml and the new config attribute, halt experiment if they're not the same
-        assert {k: self.config[k] for k in self.config_core} == {
-            k: compare_config[k] for k in self.config_core
-        }, f"Configurations for the current experiment session have changed from previous participants.\nCheck the config file or start a new experiment to proceed\Current dict: { {k: self.config[k] for k in self.config_core} }\Previous dict: { {k: compare_config[k] for k in self.config_core} }"
+        self.test_that(
+            {k: self.config[k] for k in self.config_core}
+            == {k: compare_config[k] for k in self.config_core},
+            f"Configurations for the current experiment session have changed from previous participants.\nCheck the config file or start a new experiment to proceed\Current dict: { {k: self.config[k] for k in self.config_core} }\Previous dict: { {k: compare_config[k] for k in self.config_core} }",
+            HouseKeepingError,
+        )
 
     def housekeeping_file_update(self, increment=1):
         """Update the participant number and write it to the participants housekeeping file.
@@ -633,13 +672,20 @@ class Experiment(Window):
             df {DataFrame} -- pandas DataFrame to check
         """
         # there are no missing values
-        assert df.notnull().all().all(), f"Missing values in {infile}."
+        self.test_that(
+            df.notnull().all().all(), f"Missing values in {infile}."
+        )
         # there are no duplicated rows in the dataset:
-        assert ~df.duplicated().any(), f"Duplicated rows in {infile}."
+        self.test_that(
+            ~df.duplicated().any(), f"Duplicated rows in {infile}."
+        )
         # items do not occur more than once per subexp:
-        assert ~df.duplicated(
-            subset=[self.config["sub_exp_col"], self.config["item_number_col"]]
-        ).any(), f"Some item numbers used multiple times per sub-exp in {infile}."
+        self.test_that(
+            ~df.duplicated(
+                subset=[self.config["sub_exp_col"], self.config["item_number_col"]]
+            ).any(),
+            f"Some item numbers used multiple times per sub-exp in {infile}.",
+        )
 
     def retrieve_items(self, filename):
         """Retrieve the items from the specified item file and randomize their order if specified, return a pandas DF.
@@ -776,7 +822,7 @@ class Experiment(Window):
         # compute experiment duration in minutes
         duration = round((time.time() - self.exp_start) / 60, 2)
         # whether the experiment was finished or not ('T' or 'F')
-        finished = str(not self.phases["critical"])[0]
+        finished = str(not self.critical)[0]
         # feedback or number of items completed
         feedback = self.feedback.get() or f"[{self.i_ix}/{len(self.items)} items]"
 
@@ -906,9 +952,10 @@ class Experiment(Window):
             for item, cond in products
         ]
         # if they are not all there, raise an error and show which combos are missing
-        assert all(
-            check_list
-        ), f"Not all permutations of items and conditions present in the dataframe: {[''.join(map(str, product)) for product, boolean in zip(products, check_list) if not boolean]}"
+        self.test_that(
+            all(check_list),
+            f"Not all permutations of items and conditions present in the dataframe: {[''.join(map(str, product)) for product, boolean in zip(products, check_list) if not boolean]}",
+        )
 
     def to_latin_square(
         self,
@@ -1307,14 +1354,14 @@ class Experiment(Window):
             if any([self.config["dynamic_fc"], self.config["dynamic_img"]]):
                 self.update_judgment_buttons()
         # otherwise either go to the feedback section or enter the critical stage of the exp
-        except IndexError as e:
-            self.logger.info(f"No more items to show: {e}")
+        except IndexError:
+            self.logger.info(f"No more items to show.")
             self.item_list_over()
 
     def item_list_over(self):
         """Either launch the feedback or critical section of the experiment (because all items were seen)"""
         self.empty_window()
-        if self.phases["critical"]:
+        if self.critical:
             # remove the binding from the space bar
             self.root.unbind("<space>")
             # go to the feedback section
@@ -1373,8 +1420,8 @@ class Experiment(Window):
             self.display_masked_item()
             self.submit.config(state="disabled")
         # otherwise either go to the feedback section or enter the critical stage of the exp
-        except IndexError as e:
-            self.logger.info(f"No more items to show: {e}")
+        except IndexError:
+            self.logger.info(f"No more items to show.")
             self.item_list_over()
 
     def next_text_item(self):
@@ -1417,7 +1464,7 @@ class Experiment(Window):
     def save_complete_results(self):
         """Save the results and note that the participant completed all items."""
         # end the critical portion
-        self.phases["critical"] = False
+        self.critical = False
         # add finished, duration, and feedback columns
         self.append_metrics()
         # save the results to disk
@@ -1461,7 +1508,7 @@ class Experiment(Window):
             self.root.destroy()
             # if ended before intended ending, log that and handle results and feedback file
             self.logger.info("Experiment was quit.")
-            if self.phases["critical"]:
+            if self.critical:
                 self.unfinished_participant_results()
 
 
